@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+
+{% block title %}Delete {{ server.name }} · MiniCloud{% endblock %}
+
+{% block content %}
+  <h1 class="h3">Delete {{ server.name }}?</h1>
+  <p>This removes the Docker container and retains the server record as deleted for audit history.</p>
+  <form method="post">{% csrf_token %}<button class="btn btn-danger">Delete server</button><a class="btn btn-link" href="{% url 'servers:detail' server.pk %}">Cancel</a></form>
+{% endblock %}

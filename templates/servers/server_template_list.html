@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+
+{% block title %}Server templates · MiniCloud{% endblock %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-center mb-3"><h1 class="h3 mb-0">Server templates</h1><a class="btn btn-primary" href="{% url 'servers:template-create' %}">Create template</a></div>
+  <div class="table-responsive bg-white rounded shadow-sm"><table class="table mb-0"><thead><tr><th>Name</th><th>CPU</th><th>Memory</th><th>Description</th><th></th></tr></thead><tbody>
+    {% for template in templates %}<tr><td>{{ template.name }}</td><td>{{ template.cpu_limit }}</td><td>{{ template.memory_mb }} MB</td><td>{{ template.description }}</td><td><a href="{% url 'servers:template-edit' template.pk %}">Edit</a> · <a href="{% url 'servers:template-delete' template.pk %}">Delete</a></td></tr>{% empty %}<tr><td colspan="5">No templates exist.</td></tr>{% endfor %}
+  </tbody></table></div>
+{% endblock %}

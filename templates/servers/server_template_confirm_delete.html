@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+
+{% block title %}Delete {{ template.name }} · MiniCloud{% endblock %}
+
+{% block content %}
+  <h1 class="h3">Delete {{ template.name }}?</h1>
+  <p>Templates in use by servers cannot be deleted.</p>
+  <form method="post">{% csrf_token %}<button class="btn btn-danger">Delete template</button><a class="btn btn-link" href="{% url 'servers:template-list' %}">Cancel</a></form>
+{% endblock %}

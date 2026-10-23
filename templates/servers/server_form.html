@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block title %}{% if server %}Edit {{ server.name }}{% else %}Create server{% endif %} · MiniCloud{% endblock %}
+
+{% block content %}
+  <h1 class="h3 mb-3">{% if server %}Rename server{% else %}Create server{% endif %}</h1>
+  <form method="post" class="card shadow-sm"><div class="card-body">{% csrf_token %}
+    {{ form.as_p }}
+    <button class="btn btn-primary" type="submit">{% if server %}Save{% else %}Provision server{% endif %}</button>
+    <a class="btn btn-link" href="{% if server %}{% url 'servers:detail' server.pk %}{% else %}{% url 'servers:list' %}{% endif %}">Cancel</a>
+  </div></form>
+{% endblock %}

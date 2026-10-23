@@ -1,0 +1,1208 @@
+Unauthorized: /api/servers/
+HTTP GET /api/servers/ 401 [0.01, 127.0.0.1:59251]
+HTTP OPTIONS /api/templates/ 200 [0.00, 127.0.0.1:56352]
+HTTP GET /api/templates/ 200 [0.07, 127.0.0.1:56352]
+HTTP OPTIONS /api/servers/ 200 [0.00, 127.0.0.1:56352]
+HTTP GET /api/servers/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/templates/ 200 [0.17, 127.0.0.1:56352]
+HTTP GET /api/servers/ 200 [0.05, 127.0.0.1:56352]
+HTTP GET /api/templates/ 200 [0.06, 127.0.0.1:56352]
+HTTP GET /api/servers/ 200 [0.16, 127.0.0.1:56352]
+Conflict: /api/servers/
+HTTP POST /api/servers/ 409 [0.19, 127.0.0.1:63314]
+HTTP OPTIONS /api/servers/17/ 200 [0.01, 127.0.0.1:63314]
+HTTP DELETE /api/servers/17/ 200 [1.23, 127.0.0.1:63314]
+HTTP GET /api/servers/ 200 [0.07, 127.0.0.1:63314]
+HTTP POST /api/servers/ 201 [57.14, 127.0.0.1:56352]
+HTTP GET /api/servers/ 200 [0.09, 127.0.0.1:56352]
+HTTP OPTIONS /api/servers/19/metrics/ 200 [0.00, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/ 200 [0.07, 127.0.0.1:56352]
+HTTP OPTIONS /api/servers/19/metrics/live/ 200 [0.00, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+WebSocket HANDSHAKING /ws/servers/19/terminal/ [127.0.0.1:60430]
+WebSocket CONNECT /ws/servers/19/terminal/ [127.0.0.1:60430]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.80, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.13, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.20, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+Exception inside application: (232, 'WriteFile', 'Le canal de communication est sur le point d’être fermé.')
+Traceback (most recent call last):
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\django\contrib\staticfiles\handlers.py", line 101, in __call__
+    return await self.application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\routing.py", line 48, in __call__
+    return await application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\sessions.py", line 44, in __call__
+    return await self.inner(dict(scope, cookies=cookies), receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\sessions.py", line 261, in __call__
+    return await self.inner(wrapper.scope, receive, wrapper.send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\auth.py", line 185, in __call__
+    return await super().__call__(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\middleware.py", line 24, in __call__
+    return await self.inner(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\minicloud\websocket_auth.py", line 26, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\routing.py", line 118, in __call__
+    return await application(
+           ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\consumer.py", line 95, in app
+    return await consumer(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\consumer.py", line 58, in __call__
+    await await_many_dispatch(
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\utils.py", line 50, in await_many_dispatch
+    await dispatch(result)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\consumer.py", line 74, in dispatch
+    await handler(message)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\generic\websocket.py", line 206, in websocket_receive
+    await self.receive(bytes_data=message["bytes"])
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\consumers.py", line 51, in receive
+    await asyncio.to_thread(self.terminal.write, bytes_data)
+  File "C:\Users\ahmed amine bouhlel\AppData\Local\Programs\Python\Python311\Lib\asyncio\threads.py", line 25, in to_thread
+    return await loop.run_in_executor(None, func_call)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\docker_service.py", line 36, in write
+    self._socket_handle.sendall(data)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\docker\transport\npipesocket.py", line 25, in wrapped
+    return f(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\docker\transport\npipesocket.py", line 173, in sendall
+    return self.send(string, flags)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\docker\transport\npipesocket.py", line 25, in wrapped
+    return f(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\docker\transport\npipesocket.py", line 162, in send
+    win32file.WriteFile(self._handle, string, overlapped)
+pywintypes.error: (232, 'WriteFile', 'Le canal de communication est sur le point d’être fermé.')
+WebSocket DISCONNECT /ws/servers/19/terminal/ [127.0.0.1:60430]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.10, 127.0.0.1:56352]
+Task exception was never retrieved
+future: <Task finished name='Task-80' coro=<ServerTerminalConsumer.stream_output() done, defined at C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\consumers.py:68> exception=error(109, 'ReadFile', 'Le canal de communication a été fermé.')>
+Traceback (most recent call last):
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\consumers.py", line 71, in stream_output
+    output = await asyncio.to_thread(self.terminal.read)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\AppData\Local\Programs\Python\Python311\Lib\asyncio\threads.py", line 25, in to_thread
+    return await loop.run_in_executor(None, func_call)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\docker_service.py", line 33, in read
+    return self._socket_handle.recv(size)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\docker\transport\npipesocket.py", line 25, in wrapped
+    return f(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\docker\transport\npipesocket.py", line 121, in recv
+    err, data = win32file.ReadFile(self._handle, bufsize)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pywintypes.error: (109, 'ReadFile', 'Le canal de communication a été fermé.')
+HTTP GET /api/servers/19/metrics/live/ 200 [0.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.18, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.21, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.16, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.11, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.12, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.18, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.18, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.11, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.21, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.21, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.18, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.18, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.11, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.15, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.11, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.21, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.11, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.13, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.27, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.11, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.11, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.20, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.44, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.20, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.20, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.21, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.20, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.11, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.20, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.11, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.11, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.20, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.20, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.14, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.21, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.12, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.11, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.24, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.14, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.12, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.22, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.11, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.21, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.14, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.26, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.21, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.21, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.11, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.11, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.16, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.20, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.20, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.11, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.18, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.20, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.11, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.20, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.20, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.18, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.18, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.23, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.18, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.24, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.22, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.20, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.12, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.20, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.21, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.18, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.20, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.21, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.20, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.20, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.11, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.11, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.20, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.14, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.21, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.20, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.21, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.23, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [1.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.20, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.15, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.13, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.18, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.17, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.20, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.20, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.17, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.18, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.18, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.20, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.20, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.20, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.18, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.20, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.17, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.18, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.18, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.17, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.18, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.18, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.20, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.17, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.18, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.20, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.20, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.18, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.20, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.18, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.18, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.18, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.12, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/templates/ 200 [0.06, 127.0.0.1:56352]
+HTTP GET /api/servers/ 200 [0.16, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/ 200 [0.15, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+WebSocket HANDSHAKING /ws/servers/19/terminal/ [127.0.0.1:58688]
+WebSocket CONNECT /ws/servers/19/terminal/ [127.0.0.1:58688]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+Exception inside application: invalid close code 1011 (must be 1000 or from [3000, 4999])
+Traceback (most recent call last):
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\services.py", line 62, in open_server_terminal
+    return docker_service.open_terminal(server.container_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\docker_service.py", line 419, in open_terminal
+    raise DockerServiceError("An interactive shell requires a running container.")
+servers.docker_service.DockerServiceError: An interactive shell requires a running container.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\consumers.py", line 23, in connect
+    self.terminal = await asyncio.to_thread(open_server_terminal, self.server)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\AppData\Local\Programs\Python\Python311\Lib\asyncio\threads.py", line 25, in to_thread
+    return await loop.run_in_executor(None, func_call)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\services.py", line 64, in open_server_terminal
+    raise ServerServiceError(str(error)) from error
+servers.services.ServerServiceError: An interactive shell requires a running container.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\django\contrib\staticfiles\handlers.py", line 101, in __call__
+    return await self.application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\routing.py", line 48, in __call__
+    return await application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\sessions.py", line 44, in __call__
+    return await self.inner(dict(scope, cookies=cookies), receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\sessions.py", line 261, in __call__
+    return await self.inner(wrapper.scope, receive, wrapper.send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\auth.py", line 185, in __call__
+    return await super().__call__(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\middleware.py", line 24, in __call__
+    return await self.inner(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\minicloud\websocket_auth.py", line 26, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\routing.py", line 118, in __call__
+    return await application(
+           ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\consumer.py", line 95, in app
+    return await consumer(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\consumer.py", line 58, in __call__
+    await await_many_dispatch(
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\utils.py", line 50, in await_many_dispatch
+    await dispatch(result)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\consumer.py", line 74, in dispatch
+    await handler(message)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\generic\websocket.py", line 180, in websocket_connect
+    await self.connect()
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\consumers.py", line 27, in connect
+    await self.reject_with_error("Docker could not open an interactive shell for this container.", 1011)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\consumers.py", line 35, in reject_with_error
+    await self.close(code=close_code)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\generic\websocket.py", line 236, in close
+    await super().send(message)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\consumer.py", line 82, in send
+    await self.base_send(message)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\sessions.py", line 221, in send
+    return await self.real_send(message)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\daphne\server.py", line 246, in handle_reply
+    protocol.handle_reply(message)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\daphne\ws_protocol.py", line 195, in handle_reply
+    self.serverClose(code=message.get("code", None))
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\daphne\ws_protocol.py", line 268, in serverClose
+    self.sendClose(code=code)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\autobahn\websocket\protocol.py", line 2324, in sendClose
+    raise Exception(
+Exception: invalid close code 1011 (must be 1000 or from [3000, 4999])
+WebSocket DISCONNECT /ws/servers/19/terminal/ [127.0.0.1:58688]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.18, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.18, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.18, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.11, 127.0.0.1:56352]
+HTTP GET /api/templates/ 200 [0.06, 127.0.0.1:56352]
+HTTP GET /api/servers/ 200 [0.17, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/ 200 [0.16, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.18, 127.0.0.1:56352]
+WebSocket HANDSHAKING /ws/servers/19/terminal/ [127.0.0.1:64856]
+WebSocket CONNECT /ws/servers/19/terminal/ [127.0.0.1:64856]
+Exception inside application: invalid close code 1011 (must be 1000 or from [3000, 4999])
+Traceback (most recent call last):
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\services.py", line 62, in open_server_terminal
+    return docker_service.open_terminal(server.container_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\docker_service.py", line 419, in open_terminal
+    raise DockerServiceError("An interactive shell requires a running container.")
+servers.docker_service.DockerServiceError: An interactive shell requires a running container.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\consumers.py", line 23, in connect
+    self.terminal = await asyncio.to_thread(open_server_terminal, self.server)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\AppData\Local\Programs\Python\Python311\Lib\asyncio\threads.py", line 25, in to_thread
+    return await loop.run_in_executor(None, func_call)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\services.py", line 64, in open_server_terminal
+    raise ServerServiceError(str(error)) from error
+servers.services.ServerServiceError: An interactive shell requires a running container.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\django\contrib\staticfiles\handlers.py", line 101, in __call__
+    return await self.application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\routing.py", line 48, in __call__
+    return await application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\sessions.py", line 44, in __call__
+    return await self.inner(dict(scope, cookies=cookies), receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\sessions.py", line 261, in __call__
+    return await self.inner(wrapper.scope, receive, wrapper.send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\auth.py", line 185, in __call__
+    return await super().__call__(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\middleware.py", line 24, in __call__
+    return await self.inner(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\minicloud\websocket_auth.py", line 26, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\routing.py", line 118, in __call__
+    return await application(
+           ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\consumer.py", line 95, in app
+    return await consumer(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\consumer.py", line 58, in __call__
+    await await_many_dispatch(
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\utils.py", line 50, in await_many_dispatch
+    await dispatch(result)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\consumer.py", line 74, in dispatch
+    await handler(message)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\generic\websocket.py", line 180, in websocket_connect
+    await self.connect()
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\consumers.py", line 27, in connect
+    await self.reject_with_error("Docker could not open an interactive shell for this container.", 1011)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\consumers.py", line 35, in reject_with_error
+    await self.close(code=close_code)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\generic\websocket.py", line 236, in close
+    await super().send(message)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\consumer.py", line 82, in send
+    await self.base_send(message)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\sessions.py", line 221, in send
+    return await self.real_send(message)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\daphne\server.py", line 246, in handle_reply
+    protocol.handle_reply(message)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\daphne\ws_protocol.py", line 195, in handle_reply
+    self.serverClose(code=message.get("code", None))
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\daphne\ws_protocol.py", line 268, in serverClose
+    self.sendClose(code=code)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\autobahn\websocket\protocol.py", line 2324, in sendClose
+    raise Exception(
+Exception: invalid close code 1011 (must be 1000 or from [3000, 4999])
+WebSocket DISCONNECT /ws/servers/19/terminal/ [127.0.0.1:64856]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.18, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.10, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.13, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.19, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.09, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.08, 127.0.0.1:56352]
+HTTP GET /api/servers/19/metrics/live/ 200 [0.07, 127.0.0.1:56352]
+HTTP GET /api/templates/ 200 [0.05, 127.0.0.1:56352]
+HTTP GET /api/servers/ 200 [0.05, 127.0.0.1:56352]
+HTTP GET / 200 [0.16, 127.0.0.1:54444]
+HTTP GET /servers/19/ 200 [0.12, 127.0.0.1:54444]
+WebSocket HANDSHAKING /ws/servers/19/metrics/ [127.0.0.1:60406]
+WebSocket CONNECT /ws/servers/19/metrics/ [127.0.0.1:60406]
+WebSocket HANDSHAKING /ws/servers/19/logs/ [127.0.0.1:54098]
+WebSocket CONNECT /ws/servers/19/logs/ [127.0.0.1:54098]
+WebSocket HANDSHAKING /ws/servers/19/terminal/ [127.0.0.1:56758]
+WebSocket CONNECT /ws/servers/19/terminal/ [127.0.0.1:56758]
+HTTP GET /servers/19/metrics/ 200 [0.17, 127.0.0.1:54444]
+Exception inside application: invalid close code 1011 (must be 1000 or from [3000, 4999])
+Traceback (most recent call last):
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\services.py", line 62, in open_server_terminal
+    return docker_service.open_terminal(server.container_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\docker_service.py", line 419, in open_terminal
+    raise DockerServiceError("An interactive shell requires a running container.")
+servers.docker_service.DockerServiceError: An interactive shell requires a running container.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\consumers.py", line 23, in connect
+    self.terminal = await asyncio.to_thread(open_server_terminal, self.server)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\AppData\Local\Programs\Python\Python311\Lib\asyncio\threads.py", line 25, in to_thread
+    return await loop.run_in_executor(None, func_call)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\services.py", line 64, in open_server_terminal
+    raise ServerServiceError(str(error)) from error
+servers.services.ServerServiceError: An interactive shell requires a running container.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\django\contrib\staticfiles\handlers.py", line 101, in __call__
+    return await self.application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\routing.py", line 48, in __call__
+    return await application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\sessions.py", line 44, in __call__
+    return await self.inner(dict(scope, cookies=cookies), receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\sessions.py", line 261, in __call__
+    return await self.inner(wrapper.scope, receive, wrapper.send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\auth.py", line 185, in __call__
+    return await super().__call__(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\middleware.py", line 24, in __call__
+    return await self.inner(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\minicloud\websocket_auth.py", line 26, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\routing.py", line 118, in __call__
+    return await application(
+           ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\consumer.py", line 95, in app
+    return await consumer(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\consumer.py", line 58, in __call__
+    await await_many_dispatch(
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\utils.py", line 50, in await_many_dispatch
+    await dispatch(result)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\consumer.py", line 74, in dispatch
+    await handler(message)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\generic\websocket.py", line 180, in websocket_connect
+    await self.connect()
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\consumers.py", line 27, in connect
+    await self.reject_with_error("Docker could not open an interactive shell for this container.", 1011)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\consumers.py", line 35, in reject_with_error
+    await self.close(code=close_code)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\generic\websocket.py", line 236, in close
+    await super().send(message)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\consumer.py", line 82, in send
+    await self.base_send(message)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\sessions.py", line 221, in send
+    return await self.real_send(message)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\daphne\server.py", line 246, in handle_reply
+    protocol.handle_reply(message)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\daphne\ws_protocol.py", line 195, in handle_reply
+    self.serverClose(code=message.get("code", None))
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\daphne\ws_protocol.py", line 268, in serverClose
+    self.sendClose(code=code)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\autobahn\websocket\protocol.py", line 2324, in sendClose
+    raise Exception(
+Exception: invalid close code 1011 (must be 1000 or from [3000, 4999])
+WebSocket DISCONNECT /ws/servers/19/terminal/ [127.0.0.1:56758]
+HTTP GET /servers/19/metrics/ 200 [0.06, 127.0.0.1:54444]
+HTTP GET /servers/19/metrics/ 200 [0.09, 127.0.0.1:54444]
+HTTP GET /servers/19/metrics/ 200 [0.06, 127.0.0.1:54444]
+HTTP GET /servers/19/metrics/ 200 [0.06, 127.0.0.1:54444]
+HTTP GET /servers/19/metrics/ 200 [0.07, 127.0.0.1:54444]
+HTTP GET / 200 [0.17, 127.0.0.1:54444]
+HTTP GET /servers/19/metrics/ 200 [0.07, 127.0.0.1:64035]
+WebSocket DISCONNECT /ws/servers/19/metrics/ [127.0.0.1:60406]
+WebSocket DISCONNECT /ws/servers/19/logs/ [127.0.0.1:54098]
+HTTP GET /servers/19/ 200 [0.19, 127.0.0.1:61068]
+WebSocket HANDSHAKING /ws/servers/19/metrics/ [127.0.0.1:59422]
+WebSocket CONNECT /ws/servers/19/metrics/ [127.0.0.1:59422]
+HTTP GET /servers/19/metrics/ 200 [0.07, 127.0.0.1:61068]
+WebSocket HANDSHAKING /ws/servers/19/logs/ [127.0.0.1:55651]
+WebSocket CONNECT /ws/servers/19/logs/ [127.0.0.1:55651]
+WebSocket HANDSHAKING /ws/servers/19/terminal/ [127.0.0.1:59584]
+WebSocket CONNECT /ws/servers/19/terminal/ [127.0.0.1:59584]
+Exception inside application: invalid close code 1011 (must be 1000 or from [3000, 4999])
+Traceback (most recent call last):
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\services.py", line 62, in open_server_terminal
+    return docker_service.open_terminal(server.container_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\docker_service.py", line 419, in open_terminal
+    raise DockerServiceError("An interactive shell requires a running container.")
+servers.docker_service.DockerServiceError: An interactive shell requires a running container.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\consumers.py", line 23, in connect
+    self.terminal = await asyncio.to_thread(open_server_terminal, self.server)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\AppData\Local\Programs\Python\Python311\Lib\asyncio\threads.py", line 25, in to_thread
+    return await loop.run_in_executor(None, func_call)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\services.py", line 64, in open_server_terminal
+    raise ServerServiceError(str(error)) from error
+servers.services.ServerServiceError: An interactive shell requires a running container.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\django\contrib\staticfiles\handlers.py", line 101, in __call__
+    return await self.application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\routing.py", line 48, in __call__
+    return await application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\sessions.py", line 44, in __call__
+    return await self.inner(dict(scope, cookies=cookies), receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\sessions.py", line 261, in __call__
+    return await self.inner(wrapper.scope, receive, wrapper.send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\auth.py", line 185, in __call__
+    return await super().__call__(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\middleware.py", line 24, in __call__
+    return await self.inner(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\minicloud\websocket_auth.py", line 26, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\routing.py", line 118, in __call__
+    return await application(
+           ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\consumer.py", line 95, in app
+    return await consumer(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\consumer.py", line 58, in __call__
+    await await_many_dispatch(
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\utils.py", line 50, in await_many_dispatch
+    await dispatch(result)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\consumer.py", line 74, in dispatch
+    await handler(message)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\generic\websocket.py", line 180, in websocket_connect
+    await self.connect()
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\consumers.py", line 27, in connect
+    await self.reject_with_error("Docker could not open an interactive shell for this container.", 1011)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\consumers.py", line 35, in reject_with_error
+    await self.close(code=close_code)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\generic\websocket.py", line 236, in close
+    await super().send(message)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\consumer.py", line 82, in send
+    await self.base_send(message)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\sessions.py", line 221, in send
+    return await self.real_send(message)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\daphne\server.py", line 246, in handle_reply
+    protocol.handle_reply(message)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\daphne\ws_protocol.py", line 195, in handle_reply
+    self.serverClose(code=message.get("code", None))
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\daphne\ws_protocol.py", line 268, in serverClose
+    self.sendClose(code=code)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\autobahn\websocket\protocol.py", line 2324, in sendClose
+    raise Exception(
+Exception: invalid close code 1011 (must be 1000 or from [3000, 4999])
+WebSocket DISCONNECT /ws/servers/19/terminal/ [127.0.0.1:59584]
+HTTP GET /servers/19/metrics/ 200 [0.06, 127.0.0.1:61068]
+HTTP GET /servers/19/metrics/ 200 [0.06, 127.0.0.1:61068]
+HTTP GET /servers/19/edit/ 200 [0.14, 127.0.0.1:61068]
+WebSocket DISCONNECT /ws/servers/19/metrics/ [127.0.0.1:59422]
+WebSocket DISCONNECT /ws/servers/19/logs/ [127.0.0.1:55651]
+HTTP GET /servers/19/ 200 [0.08, 127.0.0.1:61068]
+WebSocket HANDSHAKING /ws/servers/19/metrics/ [127.0.0.1:60160]
+WebSocket CONNECT /ws/servers/19/metrics/ [127.0.0.1:60160]
+WebSocket HANDSHAKING /ws/servers/19/logs/ [127.0.0.1:54695]
+WebSocket CONNECT /ws/servers/19/logs/ [127.0.0.1:54695]
+WebSocket HANDSHAKING /ws/servers/19/terminal/ [127.0.0.1:57636]
+WebSocket CONNECT /ws/servers/19/terminal/ [127.0.0.1:57636]
+HTTP GET /servers/19/metrics/ 200 [0.10, 127.0.0.1:61068]
+Exception inside application: invalid close code 1011 (must be 1000 or from [3000, 4999])
+Traceback (most recent call last):
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\services.py", line 62, in open_server_terminal
+    return docker_service.open_terminal(server.container_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\docker_service.py", line 419, in open_terminal
+    raise DockerServiceError("An interactive shell requires a running container.")
+servers.docker_service.DockerServiceError: An interactive shell requires a running container.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\consumers.py", line 23, in connect
+    self.terminal = await asyncio.to_thread(open_server_terminal, self.server)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\AppData\Local\Programs\Python\Python311\Lib\asyncio\threads.py", line 25, in to_thread
+    return await loop.run_in_executor(None, func_call)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\services.py", line 64, in open_server_terminal
+    raise ServerServiceError(str(error)) from error
+servers.services.ServerServiceError: An interactive shell requires a running container.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\django\contrib\staticfiles\handlers.py", line 101, in __call__
+    return await self.application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\routing.py", line 48, in __call__
+    return await application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\sessions.py", line 44, in __call__
+    return await self.inner(dict(scope, cookies=cookies), receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\sessions.py", line 261, in __call__
+    return await self.inner(wrapper.scope, receive, wrapper.send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\auth.py", line 185, in __call__
+    return await super().__call__(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\middleware.py", line 24, in __call__
+    return await self.inner(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\minicloud\websocket_auth.py", line 26, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\routing.py", line 118, in __call__
+    return await application(
+           ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\consumer.py", line 95, in app
+    return await consumer(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\consumer.py", line 58, in __call__
+    await await_many_dispatch(
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\utils.py", line 50, in await_many_dispatch
+    await dispatch(result)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\consumer.py", line 74, in dispatch
+    await handler(message)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\generic\websocket.py", line 180, in websocket_connect
+    await self.connect()
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\consumers.py", line 27, in connect
+    await self.reject_with_error("Docker could not open an interactive shell for this container.", 1011)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\servers\consumers.py", line 35, in reject_with_error
+    await self.close(code=close_code)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\generic\websocket.py", line 236, in close
+    await super().send(message)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\consumer.py", line 82, in send
+    await self.base_send(message)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\channels\sessions.py", line 221, in send
+    return await self.real_send(message)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\daphne\server.py", line 246, in handle_reply
+    protocol.handle_reply(message)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\daphne\ws_protocol.py", line 195, in handle_reply
+    self.serverClose(code=message.get("code", None))
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\daphne\ws_protocol.py", line 268, in serverClose
+    self.sendClose(code=code)
+  File "C:\Users\ahmed amine bouhlel\Desktop\MiniCloud\.venv\Lib\site-packages\autobahn\websocket\protocol.py", line 2324, in sendClose
+    raise Exception(
+Exception: invalid close code 1011 (must be 1000 or from [3000, 4999])
+WebSocket DISCONNECT /ws/servers/19/terminal/ [127.0.0.1:57636]
+HTTP GET /servers/19/metrics/ 200 [0.17, 127.0.0.1:61068]
+HTTP GET /servers/19/metrics/ 200 [0.06, 127.0.0.1:61068]
+HTTP GET /servers/19/metrics/ 200 [0.05, 127.0.0.1:61068]
+HTTP GET /servers/19/metrics/ 200 [0.05, 127.0.0.1:61068]
+HTTP GET /servers/19/metrics/ 200 [0.07, 127.0.0.1:61068]
+HTTP GET /servers/19/metrics/ 200 [0.07, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.16, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.16, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.05, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.16, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.06, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.06, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.06, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.06, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.17, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.05, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.06, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.05, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.07, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.18, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.06, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.06, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.07, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.08, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.17, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.07, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.06, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.06, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.07, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.05, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.17, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.06, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.05, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.05, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.06, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.06, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.06, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.07, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.07, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.06, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.05, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.06, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.05, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.06, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.07, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.06, 127.0.0.1:53791]
+HTTP GET /servers/19/metrics/ 200 [0.06, 127.0.0.1:53791]
+HTTP GET / 200 [0.16, 127.0.0.1:53791]
+WebSocket DISCONNECT /ws/servers/19/metrics/ [127.0.0.1:60160]
+WebSocket DISCONNECT /ws/servers/19/logs/ [127.0.0.1:54695]

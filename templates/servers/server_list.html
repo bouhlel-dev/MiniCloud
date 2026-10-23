@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Servers · MiniCloud{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
+    <div>
+      <div class="text-uppercase small text-muted font-mono mb-2">Infrastructure / overview</div>
+      <h1 class="display-6 fw-bold mb-1">Your servers</h1>
+      <p class="text-muted mb-0">Local containers, resource limits, and health at a glance.</p>
+    </div>
+    <a class="btn btn-dark px-3" href="{% url 'servers:create' %}">+ Create server</a>
+  </div>
+  {% if servers %}
+    <div class="row g-3">
+      {% for server in servers %}
+        <div class="col-12 col-md-6 col-xl-4">
+          <article class="dashboard-card bg-white h-100 p-4">
+            <div class="d-flex justify-content-between align-items-start gap-3 mb-4">
+              <div><div class="font-mono small text-muted mb-1">MINICLOUD-{{ server.pk|stringformat:"03d" }}</div><h2 class="h5 mb-1">{{ server.name }}</h2><div class="small text-muted">{{ server.get_image_display }}</div></div>
+              <span class="small text-nowrap"><span class="status-dot status-{{ server.status }} me-1"></span>{{ server.get_status_display }}</span>
+            </div>
+            <div class="row g-2 small mb-4">
+              <div class="col-6"><div class="text-muted">CPU limit</div><strong>{{ server.template.cpu_limit }} cores</strong></div>
+              <div class="col-6"><div class="text-muted">Memory</div><strong>{{ server.template.memory_mb }} MB</strong></div>
+              <div class="col-6"><div class="text-muted">Host port</div><strong>{{ server.host_port|default:"Unassigned" }}</strong></div>
+              <div class="col-6"><div class="text-muted">Created</div><strong>{{ server.created_at|date:"M j, Y" }}</strong></div>
+            </div>
+            <div class="d-flex gap-2 mt-auto">
+              <a class="btn btn-dark btn-sm" href="{% url 'servers:detail' server.pk %}">Open dashboard</a>
+              {% if server.status == 'running' %}<form method="post" action="{% url 'servers:stop' server.pk %}">{% csrf_token %}<button class="btn btn-outline-warning btn-sm">Stop</button></form>{% elif server.status == 'stopped' or server.status == 'failed' %}<form method="post" action="{% url 'servers:start' server.pk %}">{% csrf_token %}<button class="btn btn-outline-success btn-sm">Start</button></form>{% endif %}
+            </div>
+          </article>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="dashboard-card bg-white p-5 text-center"><h2 class="h4">Nothing provisioned yet</h2><p class="text-muted">Create a server to provision your first local Docker container.</p><a class="btn btn-dark" href="{% url 'servers:create' %}">Create server</a></div>
+  {% endif %}
+{% endblock %}

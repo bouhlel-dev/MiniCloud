@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+
+{% block title %}{{ server.name }} · MiniCloud{% endblock %}
+
+{% block extra_head %}
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.css">
+{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
+    <div><div class="text-uppercase small text-muted font-mono mb-2">Server / telemetry</div><h1 class="display-6 fw-bold mb-1">{{ server.name }}</h1><p class="text-muted mb-0">{{ server.get_image_display }} <span class="mx-1">·</span> <span class="status-dot status-{{ server.status }} me-1"></span>{{ server.get_status_display }}</p></div>
+    <a class="btn btn-outline-dark" href="{% url 'servers:list' %}">All servers</a>
+  </div>
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-lg-3"><div class="dashboard-card bg-white p-3 h-100"><div class="small text-muted">CPU limit</div><div class="metric-value">{{ server.template.cpu_limit }} <small class="fs-6 fw-normal">cores</small></div></div></div>
+    <div class="col-6 col-lg-3"><div class="dashboard-card bg-white p-3 h-100"><div class="small text-muted">Memory limit</div><div class="metric-value">{{ server.template.memory_mb }} <small class="fs-6 fw-normal">MB</small></div></div></div>
+    <div class="col-6 col-lg-3"><div class="dashboard-card bg-white p-3 h-100"><div class="small text-muted">Host port</div><div class="metric-value">{{ server.host_port|default:"—" }}</div></div></div>
+    <div class="col-6 col-lg-3"><div class="dashboard-card bg-white p-3 h-100"><div class="small text-muted">Open incidents</div><div class="metric-value">{{ open_incidents }}</div></div></div>
+  </div>
+  <div class="row g-3 mb-3">
+    <div class="col-lg-8"><div class="dashboard-card bg-white p-4 h-100"><div class="d-flex justify-content-between align-items-center mb-3"><div><h2 class="h5 mb-1">Resource telemetry</h2><p class="small text-muted mb-0">Last 60 samples · updates every 10 seconds</p></div><span class="font-mono small text-muted" id="metric-updated">Awaiting data</span></div><div class="chart-wrap"><canvas id="resource-chart" aria-label="CPU and memory usage chart"></canvas></div></div></div>
+    <div class="col-lg-4"><div class="dashboard-card bg-white p-4 h-100"><h2 class="h5 mb-3">Container details</h2>
+    <dl class="row mb-0">
+      <dt class="col-sm-3">Template</dt><dd class="col-sm-9">{{ server.template.name }} ({{ server.template.cpu_limit }} CPU / {{ server.template.memory_mb }} MB)</dd>
+      <dt class="col-sm-3">Host port</dt><dd class="col-sm-9">{{ server.host_port|default:"Not assigned" }}</dd>
+      <dt class="col-sm-3">Container ID</dt><dd class="col-sm-9"><code>{{ server.container_id|default:"Not created" }}</code></dd>
+      <dt class="col-sm-3">Created</dt><dd class="col-sm-9">{{ server.created_at }}</dd>
+    </dl>
+    </div></div>
+  </div>
+  {% if postgres_connection_string %}
+    <div class="dashboard-card bg-white p-4 mb-3">
+      <h2 class="h5 mb-2">PostgreSQL connection</h2>
+      <p class="small text-muted">Use this URI from your host machine. It includes the database password, so treat it as a secret.</p>
+      <div class="input-group"><input id="postgres-connection-string" class="form-control font-mono" value="{{ postgres_connection_string }}" readonly><button class="btn btn-outline-secondary" id="copy-postgres-connection" type="button">Copy</button></div>
+    </div>
+  {% endif %}
+  <div class="dashboard-card bg-dark text-light p-4 mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-3"><div><h2 class="h5 mb-1">Interactive shell</h2><p class="small text-secondary mb-0">Runs inside this container, never on the MiniCloud host.</p></div><span class="small text-secondary" id="terminal-connection">{% if server.status == 'running' %}Connecting...{% else %}Server must be running{% endif %}</span></div>
+    <div id="container-terminal" style="height: 420px;" aria-label="Interactive container terminal"></div>
+  </div>
+  <div class="dashboard-card bg-white p-4 mb-3"><div class="d-flex justify-content-between align-items-center mb-3"><h2 class="h5 mb-0">Incidents</h2><span class="small text-muted">Most recent first</span></div>{% if incidents %}<div class="list-group list-group-flush">{% for incident in incidents %}<div class="list-group-item px-0 d-flex justify-content-between align-items-center"><div><strong>{{ incident.get_type_display }}</strong><div class="small text-muted">Opened {{ incident.opened_at|date:"M j, Y H:i" }}</div></div><span class="badge {% if incident.status == 'open' %}text-bg-danger{% else %}text-bg-success{% endif %}">{{ incident.get_status_display }}</span></div>{% endfor %}</div>{% else %}<p class="text-muted mb-0">No incidents recorded for this server.</p>{% endif %}</div>
+  <div class="row g-3 mb-3">
+    <div class="col-lg-8"><div class="dashboard-card bg-dark text-light p-4 h-100"><div class="d-flex justify-content-between align-items-center mb-3"><h2 class="h5 mb-0">Live logs</h2><span class="small text-secondary" id="logs-connection">Connecting...</span></div><pre id="container-logs" class="font-mono small mb-0" style="height: 220px; overflow: auto; white-space: pre-wrap; color: #c9f2df;">Waiting for container output...</pre></div></div>
+    <div class="col-lg-4"><div class="dashboard-card bg-white p-4 h-100"><h2 class="h5 mb-3">Live feed</h2><p class="small text-muted">WebSocket connection status</p><div class="d-flex align-items-center gap-2"><span class="status-dot" id="socket-dot"></span><span id="socket-status">Connecting to telemetry</span></div><p class="small text-muted mt-3 mb-0">Metrics and logs update independently from the background collector.</p></div></div>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    {% if server.status == 'running' %}
+      <form method="post" action="{% url 'servers:stop' server.pk %}">{% csrf_token %}<button class="btn btn-warning">Stop</button></form>
+      <form method="post" action="{% url 'servers:restart' server.pk %}">{% csrf_token %}<button class="btn btn-outline-primary">Restart</button></form>
+    {% elif server.status == 'stopped' or server.status == 'failed' %}
+      <form method="post" action="{% url 'servers:start' server.pk %}">{% csrf_token %}<button class="btn btn-success">Start</button></form>
+    {% endif %}
+    <a class="btn btn-outline-secondary" href="{% url 'servers:edit' server.pk %}">Rename</a>
+    <a class="btn btn-outline-danger" href="{% url 'servers:delete' server.pk %}">Delete</a>
+  </div>
+{% endblock %}
+
+{% block extra_scripts %}
+  {{ metric_data|json_script:"metric-data" }}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.js"></script>
+  <script>
+    (() => {
+      const chartElement = document.getElementById("resource-chart");
+      if (!chartElement || typeof Chart === "undefined") return;
+      const metricUrl = "{% url 'servers:metrics' server.pk %}";
+      const chartData = JSON.parse(document.getElementById("metric-data").textContent);
+      const chart = new Chart(chartElement, {
+        type: "line",
+        data: { labels: chartData.map(point => new Date(point.timestamp).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"})), datasets: [
+          { label: "CPU %", data: chartData.map(point => point.cpu_percent), borderColor: "#ee765d", backgroundColor: "rgba(238,118,93,.12)", fill: true, tension: .35, pointRadius: 0 },
+          { label: "Memory MB", data: chartData.map(point => point.memory_mb), borderColor: "#238b68", backgroundColor: "rgba(35,139,104,.08)", fill: true, tension: .35, pointRadius: 0 }
+        ]},
+        options: { responsive: true, maintainAspectRatio: false, interaction: { mode: "index", intersect: false }, scales: { y: { beginAtZero: true, grid: { color: "#edf1ed" } }, x: { grid: { display: false } } }, plugins: { legend: { position: "bottom", labels: { usePointStyle: true, boxWidth: 7 } } } }
+      });
+      const updated = document.getElementById("metric-updated");
+      async function refreshMetrics() {
+        try {
+          const response = await fetch(metricUrl, { headers: { "X-Requested-With": "XMLHttpRequest" } });
+          if (!response.ok) return;
+          const payload = await response.json();
+          chart.data.labels = payload.metrics.map(point => new Date(point.timestamp).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"}));
+          chart.data.datasets[0].data = payload.metrics.map(point => point.cpu_percent);
+          chart.data.datasets[1].data = payload.metrics.map(point => point.memory_mb);
+          chart.update("none");
+          updated.textContent = payload.metrics.length ? "Updated " + new Date(payload.metrics.at(-1).timestamp).toLocaleTimeString() : "No samples yet";
+        } catch (error) { updated.textContent = "Metrics unavailable"; }
+      }
+      refreshMetrics();
+      window.setInterval(refreshMetrics, 10000);
+
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const socketStatus = document.getElementById("socket-status");
+      const socketDot = document.getElementById("socket-dot");
+      const logsConnection = document.getElementById("logs-connection");
+      const logsElement = document.getElementById("container-logs");
+      function connectSocket(path, onMessage, onState) {
+        const socket = new WebSocket(`${protocol}//${window.location.host}${path}`);
+        socket.onopen = () => onState(true);
+        socket.onclose = () => { onState(false); window.setTimeout(() => connectSocket(path, onMessage, onState), 3000); };
+        socket.onerror = () => onState(false);
+        socket.onmessage = event => onMessage(JSON.parse(event.data));
+      }
+      connectSocket("/ws/servers/{{ server.pk }}/metrics/", payload => {
+        if (payload.type !== "metric" || !payload.metric) return;
+        const point = payload.metric;
+        chart.data.labels.push(new Date(point.timestamp).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"}));
+        chart.data.datasets[0].data.push(point.cpu_percent);
+        chart.data.datasets[1].data.push(point.memory_mb);
+        chart.data.labels = chart.data.labels.slice(-60); chart.data.datasets.forEach(dataset => dataset.data = dataset.data.slice(-60)); chart.update("none");
+      }, connected => { socketStatus.textContent = connected ? "Telemetry connected" : "Telemetry reconnecting"; socketDot.className = `status-dot ${connected ? "status-running" : "status-failed"}`; });
+      connectSocket("/ws/servers/{{ server.pk }}/logs/", payload => {
+        if (payload.type === "logs") { logsElement.textContent = payload.logs || "No container output yet."; logsElement.scrollTop = logsElement.scrollHeight; }
+      }, connected => { logsConnection.textContent = connected ? "Connected" : "Reconnecting..."; });
+
+      const terminalHost = document.getElementById("container-terminal");
+      const terminalConnection = document.getElementById("terminal-connection");
+      if (terminalHost && "{{ server.status }}" === "running" && window.Terminal && window.FitAddon) {
+        const terminal = new Terminal({ cursorBlink: true, fontFamily: "DM Mono, monospace", fontSize: 13, theme: { background: "#212529", foreground: "#d8f3e4", cursor: "#c9f2df" } });
+        const fitAddon = new FitAddon.FitAddon();
+        terminal.loadAddon(fitAddon); terminal.open(terminalHost); fitAddon.fit();
+        const terminalSocket = new WebSocket(`${protocol}//${window.location.host}/ws/servers/{{ server.pk }}/terminal/`);
+        terminalSocket.binaryType = "arraybuffer";
+        const encoder = new TextEncoder();
+        const resizeTerminal = () => {
+          fitAddon.fit();
+          if (terminalSocket.readyState === WebSocket.OPEN) terminalSocket.send(JSON.stringify({ type: "resize", cols: terminal.cols, rows: terminal.rows }));
+        };
+        terminal.onData(data => { if (terminalSocket.readyState === WebSocket.OPEN) terminalSocket.send(encoder.encode(data)); });
+        terminalSocket.onopen = () => { terminalConnection.textContent = "Connected"; resizeTerminal(); terminal.focus(); };
+        terminalSocket.onmessage = event => terminal.write(new Uint8Array(event.data));
+        terminalSocket.onclose = () => { terminalConnection.textContent = "Shell closed"; terminal.write("\r\n\x1b[31mSession closed.\x1b[0m\r\n"); };
+        terminalSocket.onerror = () => { terminalConnection.textContent = "Shell unavailable"; };
+        new ResizeObserver(resizeTerminal).observe(terminalHost);
+      }
+
+      const copyButton = document.getElementById("copy-postgres-connection");
+      if (copyButton) copyButton.addEventListener("click", async () => { const connection = document.getElementById("postgres-connection-string"); await navigator.clipboard.writeText(connection.value); copyButton.textContent = "Copied"; });
+    })();
+  </script>
+{% endblock %}
