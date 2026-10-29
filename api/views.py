@@ -4,6 +4,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from monitoring.models import MetricSnapshot
+from servers import database_admin
+from servers.database_admin import DatabaseAdminError
 from servers.docker_service import DockerService, DockerServiceError
 from servers.models import Server, ServerTemplate
 from servers.services import (
@@ -113,6 +115,145 @@ class ServerViewSet(viewsets.ModelViewSet):
         except ServerServiceError as error:
             return Response({"detail": str(error)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(result)
+
+    @action(detail=True, methods=["get"], url_path="database")
+    def database_overview(self, request, pk=None):
+        server = self.get_object()
+        database = request.query_params.get("database") or None
+        try:
+            return Response(database_admin.get_overview(server, database))
+        except DatabaseAdminError as error:
+            return self._database_error(error)
+
+    @action(detail=True, methods=["post"], url_path="database/query")
+    def database_query(self, request, pk=None):
+        server = self.get_object()
+        try:
+            return Response(
+                database_admin.run_query(
+                    server,
+                    request.data.get("sql", ""),
+                    request.data.get("database") or None,
+                )
+            )
+        except DatabaseAdminError as error:
+            return self._database_error(error)
+
+    @action(detail=True, methods=["post"], url_path="database/tables")
+    def database_create_table(self, request, pk=None):
+        server = self.get_object()
+        try:
+            table = database_admin.create_table(
+                server,
+                request.data.get("schema") or "public",
+                request.data.get("name", ""),
+                request.data.get("columns"),
+                request.data.get("database") or None,
+            )
+        except DatabaseAdminError as error:
+            return self._database_error(error)
+        return Response(table, status=status.HTTP_201_CREATED)
+
+    @action(
+        detail=True,
+        methods=["get", "delete"],
+        url_path=r"database/tables/(?P<schema>[^/]+)/(?P<table>[^/]+)",
+    )
+    def database_table(self, request, pk=None, schema=None, table=None):
+        server = self.get_object()
+        database = request.query_params.get("database") or None
+        if request.method == "DELETE":
+            try:
+                return Response(database_admin.drop_table(server, schema, table, database))
+            except DatabaseAdminError as error:
+                return self._database_error(error)
+        try:
+            limit = request.query_params.get("limit", 50)
+            offset = request.query_params.get("offset", 0)
+            return Response(database_admin.get_table(server, schema, table, database, limit, offset))
+        except (DatabaseAdminError, ValueError) as error:
+            return self._database_error(error)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path=r"database/tables/(?P<schema>[^/]+)/(?P<table>[^/]+)/rows",
+    )
+    def database_insert_row(self, request, pk=None, schema=None, table=None):
+        server = self.get_object()
+        try:
+            return Response(
+                database_admin.insert_row(
+                    server,
+                    schema,
+                    table,
+                    request.data.get("values") or {},
+                    request.data.get("database") or None,
+                ),
+                status=status.HTTP_201_CREATED,
+            )
+        except DatabaseAdminError as error:
+            return self._database_error(error)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path=r"database/tables/(?P<schema>[^/]+)/(?P<table>[^/]+)/rows/update",
+    )
+    def database_update_row(self, request, pk=None, schema=None, table=None):
+        server = self.get_object()
+        try:
+            return Response(
+                database_admin.update_row(
+                    server,
+                    schema,
+                    table,
+                    request.data.get("key") or {},
+                    request.data.get("values") or {},
+                    request.data.get("database") or None,
+                )
+            )
+        except DatabaseAdminError as error:
+            return self._database_error(error)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path=r"database/tables/(?P<schema>[^/]+)/(?P<table>[^/]+)/rows/delete",
+    )
+    def database_delete_row(self, request, pk=None, schema=None, table=None):
+        server = self.get_object()
+        try:
+            return Response(
+                database_admin.delete_row(
+                    server,
+                    schema,
+                    table,
+                    request.data.get("key") or {},
+                    request.data.get("database") or None,
+                )
+            )
+        except DatabaseAdminError as error:
+            return self._database_error(error)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path=r"database/tables/(?P<schema>[^/]+)/(?P<table>[^/]+)/truncate",
+    )
+    def database_truncate_table(self, request, pk=None, schema=None, table=None):
+        server = self.get_object()
+        try:
+            return Response(
+                database_admin.truncate_table(server, schema, table, request.data.get("database") or None)
+            )
+        except DatabaseAdminError as error:
+            return self._database_error(error)
+
+    @staticmethod
+    def _database_error(error):
+        message = str(error)
+        return Response({"detail": message}, status=status.HTTP_400_BAD_REQUEST)
 
     def _lifecycle_response(self, service_method, request):
         try:

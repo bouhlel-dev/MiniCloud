@@ -113,6 +113,10 @@ MINICLOUD_XAMPP_INSTALLER_URL = os.getenv(
     "https://sourceforge.net/projects/xampp/files/XAMPP%20Linux/8.2.12/xampp-linux-x64-8.2.12-0-installer.run/download",
 )
 MINICLOUD_XAMPP_READY_TIMEOUT = int(os.getenv("MINICLOUD_XAMPP_READY_TIMEOUT", "1800"))
+# XAMPP extracts a ~160 MB installer and runs Apache + MariaDB, which is
+# comfortably above the 256 MB "Small" template. Give PHP servers a floor so
+# the setup cannot be OOM-killed by Docker.
+MINICLOUD_XAMPP_MIN_MEMORY_MB = int(os.getenv("MINICLOUD_XAMPP_MIN_MEMORY_MB", "1024"))
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": ["rest_framework.authentication.TokenAuthentication"],

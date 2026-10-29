@@ -95,6 +95,7 @@ class Server(models.Model):
     container_id = models.CharField(max_length=64, blank=True)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.CREATING)
     provisioning_step = models.CharField(max_length=30, choices=ProvisioningStep.choices, default=ProvisioningStep.ALLOCATING_PORT, blank=True)
+    provisioning_error = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -113,6 +114,23 @@ class Server(models.Model):
 
     def __str__(self):
         return f"{self.owner.username}/{self.name}"
+
+    @classmethod
+    def effective_memory_mb_for(cls, image, template):
+        """Memory the container actually gets; PHP/XAMPP needs more than the template may offer."""
+        memory_mb = int(template.memory_mb) if template is not None else 0
+        if image == cls.Image.PHP:
+            minimum = int(getattr(settings, "MINICLOUD_XAMPP_MIN_MEMORY_MB", 1024))
+            return max(memory_mb, minimum)
+        return memory_mb
+
+    @property
+    def effective_memory_mb(self):
+        return self.effective_memory_mb_for(self.image, self.template)
+
+    @property
+    def effective_cpu_limit(self):
+        return self.template.cpu_limit if self.template is not None else Decimal("0.00")
 
     @classmethod
     def is_valid_transition(cls, current_status, new_status):

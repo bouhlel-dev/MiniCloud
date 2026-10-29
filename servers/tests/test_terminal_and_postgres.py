@@ -44,9 +44,15 @@ def test_open_terminal_uses_interactive_tty():
     assert terminal.read() == b"shell output"
     terminal.enable_path_reporting()
     terminal.write(b"touch index.html\n")
+    path_reporting = (
+        b"stty -echo 2>/dev/null\n"
+        b"PS1=$(printf '%s%s%s' '__MINICLOUD_' 'CWD__$(pwd)__MINICLOUD_' 'CWD__$ ')\n"
+        b"stty echo 2>/dev/null\n"
+        b"printf '\\033[2J\\033[H'\n"
+    )
     socket_handle.sendall.assert_has_calls(
         [
-            call(b"PS1=$(printf '%s%s%s' '__MINICLOUD_' 'CWD__$(pwd)__MINICLOUD_' 'CWD__$ ')\n"),
+            call(path_reporting),
             call(b"touch index.html\n"),
         ]
     )

@@ -9,6 +9,8 @@ class ServerSerializer(serializers.ModelSerializer):
     template_name = serializers.CharField(source="template.name", read_only=True)
     template_cpu_limit = serializers.DecimalField(source="template.cpu_limit", max_digits=6, decimal_places=2, read_only=True)
     template_memory_mb = serializers.IntegerField(source="template.memory_mb", read_only=True)
+    effective_cpu_limit = serializers.DecimalField(max_digits=6, decimal_places=2, read_only=True)
+    effective_memory_mb = serializers.IntegerField(read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     image_display = serializers.CharField(source="get_image_display", read_only=True)
     framework_display = serializers.CharField(source="get_framework_display", read_only=True)
@@ -35,6 +37,8 @@ class ServerSerializer(serializers.ModelSerializer):
             "template_name",
             "template_cpu_limit",
             "template_memory_mb",
+            "effective_cpu_limit",
+            "effective_memory_mb",
             "host_port",
             "env_vars",
             "container_id",
@@ -42,13 +46,14 @@ class ServerSerializer(serializers.ModelSerializer):
             "status_display",
             "provisioning_step",
             "provisioning_step_display",
+            "provisioning_error",
             "created_at",
             "site_url",
             "postgres_connection_string",
             "incidents",
             "open_incidents_count",
         )
-        read_only_fields = ("host_port", "container_id", "status", "created_at", "provisioning_step")
+        read_only_fields = ("host_port", "container_id", "status", "created_at", "provisioning_step", "provisioning_error")
 
     def validate_template(self, value):
         if not value:

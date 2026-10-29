@@ -24,23 +24,25 @@ class User(AbstractUser):
 
         server_model = apps.get_model("servers", "Server")
         active_servers = server_model.objects.filter(owner_id=self.pk).exclude(status=server_model.Status.DELETED)
+        servers = list(active_servers.select_related("template"))
         usage = active_servers.aggregate(
             cpu_cores=Coalesce(
                 Sum("template__cpu_limit"),
                 Value(Decimal("0.00"), output_field=DecimalField(max_digits=6, decimal_places=2)),
             ),
-            memory_mb=Coalesce(Sum("template__memory_mb"), Value(0)),
         )
         return {
-            "servers": active_servers.count(),
+            "servers": len(servers),
             "cpu_cores": usage["cpu_cores"],
-            "memory_mb": usage["memory_mb"],
+            # Count what the containers actually reserve (PHP/XAMPP gets a floor).
+            "memory_mb": sum(server.effective_memory_mb for server in servers),
         }
 
-    def has_capacity_for(self, template):
+    def has_capacity_for(self, template, image=None):
         usage = self.quota_usage()
         requested_cpu = Decimal(str(template.cpu_limit))
-        requested_memory = int(template.memory_mb)
+        server_model = apps.get_model("servers", "Server")
+        requested_memory = server_model.effective_memory_mb_for(image, template)
         return (
             usage["servers"] < self.max_servers
             and usage["cpu_cores"] + requested_cpu <= Decimal(self.max_cpu_cores)

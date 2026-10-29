@@ -4,8 +4,8 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import {
-  ArrowLeft, ArrowUpRight, Box, ChevronRight, CircleDot, Cpu, LayoutDashboard, Network,
-  LogOut, Plus, RefreshCw, RotateCw, Server, Trash2, X,
+  ArrowLeft, ArrowUpRight, Box, ChevronLeft, ChevronRight, CircleDot, Cpu, Database, LayoutDashboard, Network,
+  LogOut, Pencil, Play, Plus, RefreshCw, RotateCw, Server, Table2, Trash2, X,
 } from '@lucide/vue'
 
 const apiBase = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000/api'
@@ -36,7 +36,304 @@ let provisioningPollTimer = null
 let terminalResizeObserver = null
 let terminalOutputBuffer = ''
 let terminalTextDecoder = null
+let terminalRetryCount = 0
 const terminalPathMarker = '__MINICLOUD_CWD__'
+
+const databaseState = () => ({
+  loading: false,
+  error: '',
+  database: '',
+  version: '',
+  databases: [],
+  tables: [],
+  selected: null,
+  table: null,
+  limit: 50,
+  offset: 0,
+  tab: 'data',
+  sql: 'SELECT * FROM ',
+  result: null,
+  running: false,
+})
+const db = ref(databaseState())
+const rowEditor = ref({ open: false, mode: 'insert', fields: {}, key: null, error: '', saving: false })
+const tableCreator = ref({ open: false, schema: 'public', name: '', columns: [], error: '', saving: false })
+const dbColumnTypes = [
+  'serial', 'bigserial', 'integer', 'bigint', 'smallint', 'numeric(10,2)', 'real', 'double precision',
+  'text', 'varchar(255)', 'char(10)', 'boolean', 'date', 'timestamptz', 'timestamp', 'time',
+  'uuid', 'json', 'jsonb', 'bytea',
+]
+
+const editableColumns = computed(() => (db.value.table?.columns || []).filter(column => !column.identity && !column.generated))
+
+function resetDatabase() {
+  db.value = databaseState()
+  rowEditor.value.open = false
+  tableCreator.value.open = false
+}
+
+function formatBytes(bytes) {
+  if (!bytes) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  let value = Number(bytes)
+  let unit = 0
+  while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1 }
+  return `${value.toFixed(value >= 10 || unit === 0 ? 0 : 1)} ${units[unit]}`
+}
+
+function formatCell(value) {
+  if (value === null || value === undefined) return 'NULL'
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
+
+function isBooleanColumn(column) {
+  return column.type.includes('bool')
+}
+
+function isJsonColumn(column) {
+  return column.type.includes('json')
+}
+
+function databaseUrl(path, params = {}) {
+  const search = new URLSearchParams()
+  if (db.value.database) search.set('database', db.value.database)
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== '') search.set(key, String(value))
+  }
+  const query = search.toString()
+  return `/servers/${selectedServer.value.id}/database${path}${query ? `?${query}` : ''}`
+}
+
+async function loadDatabase(databaseName) {
+  const server = selectedServer.value
+  if (!server || server.image !== 'postgres' || server.status !== 'running') return
+  db.value.loading = true
+  db.value.error = ''
+  try {
+    const search = new URLSearchParams()
+    const target = databaseName || db.value.database
+    if (target) search.set('database', target)
+    const data = await api(databaseUrl('/', Object.fromEntries(search)))
+    db.value.database = data.database
+    db.value.version = data.server_version
+    db.value.databases = data.databases
+    db.value.tables = data.tables
+    const current = db.value.selected
+    if (current && data.tables.some(table => table.schema === current.schema && table.name === current.name)) {
+      await loadDatabaseTable(current.schema, current.name, db.value.offset)
+    } else {
+      db.value.selected = null
+      db.value.table = null
+    }
+  } catch (err) {
+    db.value.error = err.message
+  } finally {
+    db.value.loading = false
+  }
+}
+
+async function loadDatabaseTable(schema, name, offset = 0) {
+  if (!selectedServer.value) return
+  db.value.loading = true
+  db.value.error = ''
+  db.value.selected = { schema, name }
+  db.value.offset = Math.max(0, offset)
+  try {
+    db.value.table = await api(databaseUrl(`/tables/${encodeURIComponent(schema)}/${encodeURIComponent(name)}/`, {
+      limit: db.value.limit,
+      offset: db.value.offset,
+    }))
+  } catch (err) {
+    db.value.error = err.message
+    db.value.table = null
+  } finally {
+    db.value.loading = false
+  }
+}
+
+function selectDatabaseTable(table) {
+  if (db.value.tab === 'sql') db.value.tab = 'data'
+  db.value.error = ''
+  loadDatabaseTable(table.schema, table.name, 0)
+}
+
+function setDatabaseTab(tab) {
+  db.value.tab = tab
+  db.value.error = ''
+}
+
+function databasePage(direction) {
+  if (!db.value.selected) return
+  const next = db.value.offset + direction * db.value.limit
+  if (next < 0) return
+  if (next >= (db.value.table?.total_rows || 0) && direction > 0) return
+  loadDatabaseTable(db.value.selected.schema, db.value.selected.name, next)
+}
+
+async function runDatabaseQuery() {
+  if (!selectedServer.value || db.value.running) return
+  db.value.running = true
+  db.value.error = ''
+  try {
+    db.value.result = await api(databaseUrl('/query/'), {
+      method: 'POST',
+      body: JSON.stringify({ sql: db.value.sql, database: db.value.database || null }),
+    })
+    await loadDatabase()
+  } catch (err) {
+    db.value.error = err.message
+    db.value.result = null
+  } finally {
+    db.value.running = false
+  }
+}
+
+function rowKey(row) {
+  const key = {}
+  for (const name of db.value.table?.row_key || []) key[name] = row[name]
+  return key
+}
+
+function openRowEditor(row = null) {
+  const fields = {}
+  for (const column of editableColumns.value) {
+    const value = row ? row[column.name] : ''
+    fields[column.name] = {
+      value: value === null || value === undefined ? '' : (typeof value === 'object' ? JSON.stringify(value) : String(value)),
+      nil: row ? value === null || value === undefined : false,
+    }
+  }
+  rowEditor.value = { open: true, mode: row ? 'edit' : 'insert', fields, key: row ? rowKey(row) : null, error: '', saving: false }
+}
+
+async function saveRow() {
+  const table = db.value.table
+  if (!table) return
+  const values = {}
+  for (const column of editableColumns.value) {
+    const field = rowEditor.value.fields[column.name]
+    if (!field) continue
+    if (field.nil) {
+      values[column.name] = null
+    } else if (rowEditor.value.mode === 'insert' && field.value === '') {
+      continue
+    } else if (isBooleanColumn(column)) {
+      values[column.name] = field.value === 'true'
+    } else {
+      values[column.name] = field.value
+    }
+  }
+  rowEditor.value.saving = true
+  rowEditor.value.error = ''
+  try {
+    const path = rowEditor.value.mode === 'insert'
+      ? `/tables/${encodeURIComponent(table.schema)}/${encodeURIComponent(table.table)}/rows/`
+      : `/tables/${encodeURIComponent(table.schema)}/${encodeURIComponent(table.table)}/rows/update/`
+    const body = rowEditor.value.mode === 'insert'
+      ? { values, database: db.value.database || null }
+      : { key: rowEditor.value.key, values, database: db.value.database || null }
+    await api(databaseUrl(path), { method: 'POST', body: JSON.stringify(body) })
+    rowEditor.value.open = false
+    await loadDatabaseTable(table.schema, table.table, db.value.offset)
+  } catch (err) {
+    rowEditor.value.error = err.message
+  } finally {
+    rowEditor.value.saving = false
+  }
+}
+
+async function deleteDatabaseRow(row) {
+  const table = db.value.table
+  if (!table) return
+  if (!window.confirm('Delete this row? This cannot be undone.')) return
+  try {
+    await api(databaseUrl(`/tables/${encodeURIComponent(table.schema)}/${encodeURIComponent(table.table)}/rows/delete/`), {
+      method: 'POST',
+      body: JSON.stringify({ key: rowKey(row), database: db.value.database || null }),
+    })
+    const nextOffset = db.value.table.rows.length === 1 && db.value.offset > 0 ? db.value.offset - db.value.limit : db.value.offset
+    await loadDatabaseTable(table.schema, table.table, nextOffset)
+    await loadDatabase()
+  } catch (err) {
+    db.value.error = err.message
+  }
+}
+
+function openTableCreator() {
+  tableCreator.value = {
+    open: true,
+    schema: 'public',
+    name: '',
+    columns: [{ name: 'id', type: 'serial', nullable: false, primary_key: true, default: '' }],
+    error: '',
+    saving: false,
+  }
+}
+
+function addCreatorColumn() {
+  tableCreator.value.columns.push({ name: '', type: 'text', nullable: true, primary_key: false, default: '' })
+}
+
+function removeCreatorColumn(index) {
+  tableCreator.value.columns.splice(index, 1)
+}
+
+async function createDatabaseTable() {
+  const creator = tableCreator.value
+  creator.saving = true
+  creator.error = ''
+  try {
+    await api(databaseUrl('/tables/'), {
+      method: 'POST',
+      body: JSON.stringify({
+        schema: creator.schema || 'public',
+        name: creator.name,
+        columns: creator.columns,
+        database: db.value.database || null,
+      }),
+    })
+    creator.open = false
+    await loadDatabase()
+    await loadDatabaseTable(creator.schema || 'public', creator.name, 0)
+    db.value.tab = 'data'
+  } catch (err) {
+    creator.error = err.message
+  } finally {
+    creator.saving = false
+  }
+}
+
+async function dropDatabaseTable() {
+  const table = db.value.table
+  if (!table) return
+  if (!window.confirm(`Drop table ${table.schema}.${table.table}? All of its data will be deleted.`)) return
+  try {
+    await api(databaseUrl(`/tables/${encodeURIComponent(table.schema)}/${encodeURIComponent(table.table)}/`), { method: 'DELETE' })
+    db.value.selected = null
+    db.value.table = null
+    await loadDatabase()
+  } catch (err) {
+    db.value.error = err.message
+  }
+}
+
+async function truncateDatabaseTable() {
+  const table = db.value.table
+  if (!table) return
+  if (!window.confirm(`Remove every row from ${table.schema}.${table.table}?`)) return
+  try {
+    await api(databaseUrl(`/tables/${encodeURIComponent(table.schema)}/${encodeURIComponent(table.table)}/truncate/`), {
+      method: 'POST',
+      body: JSON.stringify({ database: db.value.database || null }),
+    })
+    await loadDatabaseTable(table.schema, table.table, 0)
+    await loadDatabase()
+  } catch (err) {
+    db.value.error = err.message
+  }
+}
+
 
 function formatDate(dateString) {
   if (!dateString) return '—'
@@ -67,7 +364,7 @@ const api = async (path, options = {}) => {
 }
 
 const runningCount = computed(() => servers.value.filter(server => server.status === 'running').length)
-const totalMemory = computed(() => servers.value.reduce((total, server) => total + (server.template_memory_mb || 0), 0))
+const totalMemory = computed(() => servers.value.reduce((total, server) => total + (server.effective_memory_mb ?? server.template_memory_mb ?? 0), 0))
 
 const provisioningSteps = [
   { key: 'allocating_port', label: 'Allocating port' },
@@ -146,6 +443,7 @@ async function login() {
 function logout() {
   closeTerminal()
   stopProvisioningPoll()
+  resetDatabase()
   token.value = ''
   username.value = ''
   servers.value = []
@@ -177,6 +475,7 @@ async function loadDashboard() {
 async function selectServer(id) {
   closeTerminal()
   closeLogs()
+  resetDatabase()
   selectedServer.value = servers.value.find(server => server.id === id) || null
   if (!selectedServer.value) return
   showDetail.value = true
@@ -185,6 +484,7 @@ async function selectServer(id) {
   await nextTick()
   openTerminal()
   openLogs()
+  if (selectedServer.value.image === 'postgres' && selectedServer.value.status === 'running') loadDatabase()
   if (selectedServer.value.status === 'creating') startProvisioningPoll()
 }
 
@@ -199,6 +499,7 @@ async function refreshLiveMetric() {
 function closeDetail() {
   closeTerminal()
   closeLogs()
+  resetDatabase()
   showDetail.value = false
   selectedServer.value = null
   metrics.value = []
@@ -224,17 +525,28 @@ async function deleteServer(server) {
   } catch (err) { error.value = err.message }
 }
 
-function closeTerminal() {
+function disposeTerminalView() {
   terminalResizeObserver?.disconnect()
   terminalResizeObserver = null
-  terminalSocket?.close()
-  terminalSocket = null
   terminal?.dispose()
   terminal = null
+  if (terminalHost.value) terminalHost.value.innerHTML = ''
+}
+
+function closeTerminal() {
+  terminalSocket?.close()
+  terminalSocket = null
+  disposeTerminalView()
   terminalStatus.value = 'Offline'
   terminalPath.value = 'Resolving path…'
   terminalOutputBuffer = ''
   terminalTextDecoder = null
+}
+
+async function reconnectTerminal() {
+  closeTerminal()
+  await nextTick()
+  openTerminal()
 }
 
 function closeLogs() {
@@ -320,15 +632,17 @@ function terminalCloseMessage(code) {
 
 function openTerminal() {
   if (!selectedServer.value || selectedServer.value.status !== 'running' || !terminalHost.value || !token.value || terminalSocket) return
+  disposeTerminalView()
   const activeTerminal = new Terminal({ cursorBlink: true, fontFamily: 'DM Mono, monospace', fontSize: 13, theme: { background: '#0f1714', foreground: '#f0fff4', cursor: '#c9f2df' } })
   terminal = activeTerminal
+  const serverId = selectedServer.value.id
   const fitAddon = new FitAddon()
   activeTerminal.loadAddon(fitAddon)
   activeTerminal.open(terminalHost.value)
   fitAddon.fit()
   const socketUrl = new URL(apiBase)
   socketUrl.protocol = socketUrl.protocol === 'https:' ? 'wss:' : 'ws:'
-  socketUrl.pathname = `/ws/servers/${selectedServer.value.id}/terminal/`
+  socketUrl.pathname = `/ws/servers/${serverId}/terminal/`
   socketUrl.search = `token=${encodeURIComponent(token.value)}`
   terminalStatus.value = 'Connecting...'
   const socket = new WebSocket(socketUrl)
@@ -345,7 +659,12 @@ function openTerminal() {
   activeTerminal.onData(data => {
     if (socket.readyState === WebSocket.OPEN) socket.send(encoder.encode(data))
   })
-  socket.onopen = () => { terminalStatus.value = 'Connected'; resize(); activeTerminal.focus() }
+  socket.onopen = () => {
+    terminalRetryCount = 0
+    terminalStatus.value = 'Connected'
+    resize()
+    activeTerminal.focus()
+  }
   socket.onmessage = event => {
     if (terminalSocket !== socket) return
     if (typeof event.data === 'string') {
@@ -361,10 +680,19 @@ function openTerminal() {
   socket.onerror = () => { if (terminalSocket === socket) terminalStatus.value = 'Shell connection failed' }
   socket.onclose = event => {
     if (terminalSocket !== socket) return
+    terminalSocket = null
     const message = terminalCloseMessage(event.code)
-    if (terminalStatus.value === 'Connected' || terminalStatus.value === 'Shell connection failed') {
-      terminalStatus.value = message
-      activeTerminal.write(`\r\n\x1b[31m${message}\x1b[0m\r\n`)
+    terminalStatus.value = message
+    activeTerminal.write(`\r\n\x1b[31m${message}\x1b[0m\r\n`)
+    // A container restart closes the shell unexpectedly; reopen it automatically.
+    const retryable = ![1000, 4404].includes(event.code)
+    if (retryable && terminalRetryCount < 3 && selectedServer.value?.id === serverId && selectedServer.value.status === 'running' && showDetail.value) {
+      const delay = [3000, 6000, 10000][terminalRetryCount] || 10000
+      terminalRetryCount += 1
+      terminalStatus.value = `Reconnecting (${terminalRetryCount}/3)...`
+      window.setTimeout(() => {
+        if (!terminalSocket && selectedServer.value?.id === serverId && selectedServer.value.status === 'running' && showDetail.value) openTerminal()
+      }, delay)
     }
   }
   terminalResizeObserver = new ResizeObserver(resize)
@@ -481,11 +809,12 @@ onBeforeUnmount(() => { closeTerminal(); closeLogs(); stopProvisioningPoll() })
       <div v-else-if="selectedServer.status === 'failed'" class="provisioning-failed">
         <h3>Setup failed</h3>
         <p>Stopped at step: <strong>{{ selectedServer.provisioning_step_display }}</strong>. Start the server again or check the logs below for details.</p>
+        <p v-if="selectedServer.provisioning_error" class="provisioning-error-reason">{{ selectedServer.provisioning_error }}</p>
       </div>
 
       <!-- Live telemetry (original) -->
       <div class="detail-cards">
-        <article><span>CPU limit</span><strong>{{ selectedServer.template_cpu_limit }} <i>cores</i></strong></article>
+        <article><span>CPU limit</span><strong>{{ selectedServer.effective_cpu_limit ?? selectedServer.template_cpu_limit }} <i>cores</i></strong></article>
         <article><span>Latest memory</span><strong v-if="liveMetric?.memory_mb !== undefined || metrics.at(-1)?.memory_mb !== undefined">{{ liveMetric?.memory_mb ?? metrics.at(-1)?.memory_mb }} <i>MB</i></strong><strong v-else>Not available</strong></article>
         <article><span>CPU activity</span><strong>{{ liveMetric?.cpu_percent ?? metrics.at(-1)?.cpu_percent ?? '0.00' }}%</strong></article>
         <article><span>Uptime</span><strong>{{ liveMetric?.uptime_display || 'Not available' }}</strong></article>
@@ -494,8 +823,12 @@ onBeforeUnmount(() => { closeTerminal(); closeLogs(); stopProvisioningPoll() })
       <!-- Resource limits and container details -->
       <div class="detail-grid">
         <div class="detail-cards resource-limits">
-          <article><span>CPU limit</span><strong>{{ selectedServer.template_cpu_limit }} <i>cores</i></strong></article>
-          <article><span>Memory limit</span><strong>{{ selectedServer.template_memory_mb }} <i>MB</i></strong></article>
+          <article><span>CPU limit</span><strong>{{ selectedServer.effective_cpu_limit ?? selectedServer.template_cpu_limit }} <i>cores</i></strong></article>
+          <article>
+            <span>Memory limit</span>
+            <strong>{{ selectedServer.effective_memory_mb ?? selectedServer.template_memory_mb }} <i>MB</i></strong>
+            <small v-if="selectedServer.effective_memory_mb > selectedServer.template_memory_mb" class="limit-note">XAMPP minimum</small>
+          </article>
           <article><span>Host port</span><strong>{{ selectedServer.host_port || 'Not assigned' }}</strong></article>
           <article><span>Open incidents</span><strong>{{ selectedServer.open_incidents_count }}</strong></article>
         </div>
@@ -503,10 +836,159 @@ onBeforeUnmount(() => { closeTerminal(); closeLogs(); stopProvisioningPoll() })
           <h3>Container details</h3>
           <dl class="container-details">
             <div><dt>Template</dt><dd>{{ selectedServer.template_name }} ({{ selectedServer.template_cpu_limit }} CPU / {{ selectedServer.template_memory_mb }} MB)</dd></div>
+            <div v-if="selectedServer.effective_memory_mb > selectedServer.template_memory_mb"><dt>Memory limit</dt><dd>{{ selectedServer.effective_memory_mb }} MB (XAMPP minimum)</dd></div>
             <div><dt>Host port</dt><dd>{{ selectedServer.host_port || 'Not assigned' }}</dd></div>
             <div><dt>Container ID</dt><dd><code>{{ selectedServer.container_id || 'Not created' }}</code></dd></div>
             <div><dt>Created</dt><dd>{{ formatDate(selectedServer.created_at) }}</dd></div>
           </dl>
+        </div>
+      </div>
+
+      <!-- PostgreSQL workbench -->
+      <div v-if="selectedServer.image === 'postgres' && selectedServer.status === 'running'" class="database-workbench">
+        <div class="db-header">
+          <div>
+            <div class="eyebrow">Database workbench</div>
+            <h3><Database :size="16" /> PostgreSQL{{ db.version ? ` ${db.version}` : '' }}</h3>
+          </div>
+          <div class="db-header-actions">
+            <span class="db-database-select">
+              <select :value="db.database" aria-label="Active database" @change="loadDatabase($event.target.value)">
+                <option v-for="item in db.databases" :key="item.name" :value="item.name">{{ item.name }}</option>
+              </select>
+            </span>
+            <button type="button" class="detail-control" :disabled="db.loading" @click="loadDatabase()"><RefreshCw :size="14" /> Refresh</button>
+            <button type="button" class="detail-control primary" @click="openTableCreator"><Plus :size="14" /> New table</button>
+          </div>
+        </div>
+
+        <p v-if="db.error" class="notice error">{{ db.error }}</p>
+
+        <div class="db-tabs" role="tablist">
+          <button type="button" :class="{ active: db.tab === 'data' }" @click="setDatabaseTab('data')">Data</button>
+          <button type="button" :class="{ active: db.tab === 'structure' }" :disabled="!db.table" @click="setDatabaseTab('structure')">Structure</button>
+          <button type="button" :class="{ active: db.tab === 'sql' }" @click="setDatabaseTab('sql')">SQL console</button>
+        </div>
+
+        <div class="db-body">
+          <aside class="db-sidebar">
+            <div class="db-sidebar-heading"><span>Tables</span><b>{{ db.tables.length }}</b></div>
+            <p v-if="db.loading && !db.tables.length" class="db-empty">Loading tables…</p>
+            <p v-else-if="!db.tables.length" class="db-empty">No tables yet. Create your first table.</p>
+            <button
+              v-for="table in db.tables"
+              :key="`${table.schema}.${table.name}`"
+              type="button"
+              :class="['db-table-item', { active: db.selected?.schema === table.schema && db.selected?.name === table.name }]"
+              @click="selectDatabaseTable(table)"
+            >
+              <span class="db-table-name"><Table2 :size="13" /> {{ table.name }}</span>
+              <span class="db-table-meta">{{ table.schema }} · ~{{ table.estimated_rows }} rows · {{ formatBytes(table.size_bytes) }}</span>
+            </button>
+          </aside>
+
+          <div class="db-main">
+            <!-- SQL console -->
+            <div v-if="db.tab === 'sql'" class="db-sql">
+              <div class="db-sql-bar">
+                <span>Run SQL against <strong>{{ db.database }}</strong></span>
+                <button type="button" class="detail-control primary" :disabled="db.running" @click="runDatabaseQuery"><Play :size="13" /> {{ db.running ? 'Running…' : 'Run query' }}</button>
+              </div>
+              <textarea
+                v-model="db.sql"
+                class="db-sql-input"
+                spellcheck="false"
+                placeholder="SELECT * FROM public.my_table LIMIT 100;"
+                @keydown.ctrl.enter.prevent="runDatabaseQuery"
+                @keydown.meta.enter.prevent="runDatabaseQuery"
+              ></textarea>
+              <p class="db-sql-hint">Ctrl + Enter runs the statement. Results are capped at 500 rows.</p>
+              <div v-if="db.result" class="db-sql-result">
+                <div class="db-sql-meta">
+                  <span>{{ db.result.command || 'Result' }}</span>
+                  <span>{{ db.result.row_count }} row{{ db.result.row_count === 1 ? '' : 's' }}{{ db.result.truncated ? ' (truncated)' : '' }} · {{ db.result.duration_ms }} ms</span>
+                </div>
+                <div v-if="db.result.columns.length" class="db-grid-scroll">
+                  <table class="db-grid">
+                    <thead><tr><th v-for="column in db.result.columns" :key="column">{{ column }}</th></tr></thead>
+                    <tbody>
+                      <tr v-for="(row, index) in db.result.rows" :key="index">
+                        <td v-for="(cell, cellIndex) in row" :key="cellIndex" :class="{ 'db-null': cell === null }">{{ formatCell(cell) }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p v-else class="db-empty">{{ db.result.command || 'Statement executed.' }}</p>
+              </div>
+            </div>
+
+            <!-- Table data / structure -->
+            <template v-else-if="db.table">
+              <div class="db-table-header">
+                <div>
+                  <h3>{{ db.table.schema }}.{{ db.table.table }}</h3>
+                  <p>{{ db.table.total_rows }} row{{ db.table.total_rows === 1 ? '' : 's' }} · {{ db.table.columns.length }} column{{ db.table.columns.length === 1 ? '' : 's' }}</p>
+                </div>
+                <div class="db-table-actions">
+                  <button type="button" class="detail-control" @click="openRowEditor()"><Plus :size="13" /> Add row</button>
+                  <button type="button" class="detail-control" @click="truncateDatabaseTable">Truncate</button>
+                  <button type="button" class="detail-control danger" @click="dropDatabaseTable"><Trash2 :size="13" /> Drop</button>
+                </div>
+              </div>
+
+              <div v-if="db.tab === 'data'" class="db-data">
+                <div class="db-grid-scroll">
+                  <table class="db-grid db-grid-editable">
+                    <thead>
+                      <tr>
+                        <th class="db-grid-actions"></th>
+                        <th v-for="column in db.table.columns" :key="column.name">
+                          {{ column.name }}<small>{{ column.type }}</small>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="(row, index) in db.table.rows" :key="index">
+                        <td class="db-grid-actions">
+                          <button type="button" title="Edit row" aria-label="Edit row" @click="openRowEditor(row)"><Pencil :size="13" /></button>
+                          <button type="button" class="db-row-delete" title="Delete row" aria-label="Delete row" @click="deleteDatabaseRow(row)"><Trash2 :size="13" /></button>
+                        </td>
+                        <td v-for="column in db.table.columns" :key="column.name" :class="{ 'db-null': row[column.name] === null }" :title="formatCell(row[column.name])">{{ formatCell(row[column.name]) }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p v-if="!db.table.rows.length" class="db-empty">This table has no rows yet.</p>
+                <div class="db-pagination">
+                  <span>Rows {{ db.table.total_rows ? db.table.offset + 1 : 0 }}–{{ Math.min(db.table.offset + db.table.limit, db.table.total_rows) }} of {{ db.table.total_rows }}</span>
+                  <div>
+                    <button type="button" class="detail-control" :disabled="db.offset === 0" @click="databasePage(-1)"><ChevronLeft :size="13" /> Previous</button>
+                    <button type="button" class="detail-control" :disabled="db.table.offset + db.table.limit >= db.table.total_rows" @click="databasePage(1)">Next <ChevronRight :size="13" /></button>
+                  </div>
+                </div>
+              </div>
+
+              <div v-else class="db-structure">
+                <div v-for="column in db.table.columns" :key="column.name" class="db-column">
+                  <div class="db-column-name">
+                    <strong>{{ column.name }}</strong>
+                    <span v-if="column.primary_key" class="db-badge pk">PK</span>
+                    <span v-if="!column.nullable" class="db-badge">NOT NULL</span>
+                  </div>
+                  <div class="db-column-type">{{ column.type }}</div>
+                  <div class="db-column-default">
+                    <span>Default</span>
+                    <code>{{ column.default_value || '—' }}</code>
+                  </div>
+                </div>
+              </div>
+            </template>
+
+            <div v-else class="db-empty">
+              <Table2 :size="22" />
+              <p>Select a table to browse its rows, inspect its structure, or edit data.</p>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -535,8 +1017,71 @@ onBeforeUnmount(() => { closeTerminal(); closeLogs(); stopProvisioningPoll() })
       </div>
 
       <!-- Interactive terminal -->
-      <div class="real-terminal"><div class="terminal-bar"><span class="terminal-lights"><i></i><i></i><i></i></span><span>{{ terminalTitle }}</span><span>{{ terminalStatus }}</span></div><div ref="terminalHost" class="real-terminal-body" aria-label="Interactive container terminal"></div></div>
+      <div class="real-terminal"><div class="terminal-bar"><span class="terminal-lights"><i></i><i></i><i></i></span><span>{{ terminalTitle }}</span><span class="terminal-state">{{ terminalStatus }}<button v-if="selectedServer.status === 'running' && terminalStatus !== 'Connected'" type="button" class="terminal-reconnect" @click="reconnectTerminal">Reconnect</button></span></div><div ref="terminalHost" class="real-terminal-body" aria-label="Interactive container terminal"></div></div>
     </section>
+
+    <!-- Database row editor -->
+    <div v-if="rowEditor.open && db.table" class="modal-backdrop" @click.self="rowEditor.open = false">
+      <form class="create-modal db-modal" @submit.prevent="saveRow">
+        <div class="section-heading">
+          <div>
+            <div class="eyebrow">{{ rowEditor.mode === 'insert' ? 'New row' : 'Edit row' }}</div>
+            <h2>{{ db.table.schema }}.{{ db.table.table }}</h2>
+          </div>
+          <button type="button" class="close-button" aria-label="Close" @click="rowEditor.open = false"><X :size="20" /></button>
+        </div>
+        <p v-if="rowEditor.error" class="notice error">{{ rowEditor.error }}</p>
+        <div v-for="column in editableColumns" :key="column.name" class="db-field">
+          <div class="db-field-label"><span>{{ column.name }}</span><small>{{ column.type }}</small></div>
+          <div class="db-field-control">
+            <select v-if="isBooleanColumn(column)" v-model="rowEditor.fields[column.name].value" :disabled="rowEditor.fields[column.name].nil">
+              <option value="true">true</option>
+              <option value="false">false</option>
+            </select>
+            <textarea v-else-if="isJsonColumn(column)" v-model="rowEditor.fields[column.name].value" :disabled="rowEditor.fields[column.name].nil" rows="3" spellcheck="false"></textarea>
+            <input v-else v-model="rowEditor.fields[column.name].value" :disabled="rowEditor.fields[column.name].nil" :placeholder="column.default_value || (column.nullable ? 'NULL' : '')">
+            <label class="db-null-toggle"><input type="checkbox" v-model="rowEditor.fields[column.name].nil"> NULL</label>
+          </div>
+        </div>
+        <p v-if="rowEditor.mode === 'insert'" class="db-sql-hint">Leave a field empty to use its database default.</p>
+        <div class="db-modal-actions">
+          <button type="button" class="detail-control" @click="rowEditor.open = false">Cancel</button>
+          <button type="submit" class="detail-control primary" :disabled="rowEditor.saving">{{ rowEditor.saving ? 'Saving…' : 'Save row' }}</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Create table -->
+    <div v-if="tableCreator.open" class="modal-backdrop" @click.self="tableCreator.open = false">
+      <form class="create-modal db-modal db-create-table" @submit.prevent="createDatabaseTable">
+        <div class="section-heading">
+          <div><div class="eyebrow">New table</div><h2>Create table</h2></div>
+          <button type="button" class="close-button" aria-label="Close" @click="tableCreator.open = false"><X :size="20" /></button>
+        </div>
+        <div class="db-create-meta">
+          <label>Schema<input v-model="tableCreator.schema" required placeholder="public"></label>
+          <label>Table name<input v-model="tableCreator.name" required placeholder="customers"></label>
+        </div>
+        <div class="db-create-columns">
+          <div class="db-create-heading"><span>Columns</span><button type="button" class="text-button" @click="addCreatorColumn"><Plus :size="13" /> Add column</button></div>
+          <div v-for="(column, index) in tableCreator.columns" :key="index" class="db-create-column">
+            <input v-model="column.name" placeholder="column_name" required>
+            <select v-model="column.type">
+              <option v-for="type in dbColumnTypes" :key="type" :value="type">{{ type }}</option>
+            </select>
+            <label class="db-check"><input type="checkbox" v-model="column.primary_key"> PK</label>
+            <label class="db-check"><input type="checkbox" v-model="column.nullable"> Null</label>
+            <input v-model="column.default" placeholder="default expression">
+            <button type="button" class="close-button" aria-label="Remove column" @click="removeCreatorColumn(index)"><X :size="15" /></button>
+          </div>
+        </div>
+        <p v-if="tableCreator.error" class="notice error">{{ tableCreator.error }}</p>
+        <div class="db-modal-actions">
+          <button type="button" class="detail-control" @click="tableCreator.open = false">Cancel</button>
+          <button type="submit" class="detail-control primary" :disabled="tableCreator.saving">{{ tableCreator.saving ? 'Creating…' : 'Create table' }}</button>
+        </div>
+      </form>
+    </div>
 
     <div v-if="showCreate" class="modal-backdrop" @click.self="showCreate = false"><form class="create-modal" @submit.prevent="createServer"><div class="section-heading"><div><div class="eyebrow">New resource</div><h2>Provision server</h2></div><button type="button" class="close-button" aria-label="Close" @click="showCreate = false"><X :size="20" /></button></div><label>Server name<input v-model="createForm.name" required placeholder="edge-web-01"></label><label>Image<select v-model="createForm.image" @change="setFrameworkDefault"><option value="nginx">Nginx</option><option value="python">Python</option><option value="node">Node.js</option><option value="php">PHP / XAMPP</option><option value="postgres">PostgreSQL</option><option value="custom">Custom</option></select></label><p v-if="createForm.image === 'php'" class="framework-help">XAMPP installs Apache, MariaDB, PHP, Perl, and <code>nano</code>, then starts Apache automatically. Your PHP files live in <code>/opt/lampp/htdocs</code>.</p><label v-if="createForm.image === 'python'">Python framework<select v-model="createForm.framework"><option value="">Blank Python (runtime only)</option><option value="fastapi">FastAPI</option><option value="flask">Flask</option><option value="django">Django</option></select></label><label v-if="createForm.image === 'node'">Node.js framework<select v-model="createForm.framework"><option value="">Blank Node.js (runtime only)</option><option value="express">Express</option><option value="nextjs">Next.js</option></select></label><p v-if="['python', 'node'].includes(createForm.image)" class="framework-help"><template v-if="createForm.framework">A starter project is created in <code>/workspace</code>; framework dependencies install before the app starts.</template><template v-else>The runtime and <code>nano</code> are ready in the interactive shell, and a basic landing page remains available at the published URL.</template></p><label>Template<select v-model="createForm.template" required :disabled="!templates.length"><option value="" disabled>{{ templates.length ? 'Choose a resource preset' : 'No templates available' }}</option><option v-for="template in templates" :key="template.id" :value="template.id">{{ template.name }} - {{ template.cpu_limit }} CPU / {{ template.memory_mb }} MB</option></select></label><p v-if="!templates.length" class="error">No templates are available. Seed the built-in templates before provisioning.</p><label v-if="createForm.image === 'custom'">Custom image<input v-model="createForm.custom_image" placeholder="registry/image:tag"></label><template v-if="createForm.image === 'postgres'"><p class="postgres-help">Credentials are used to initialize this isolated PostgreSQL container. Leave the password blank to generate one; copy its connection URI from the detail page after provisioning.</p><label>Database name<input v-model="createForm.postgres_database" required pattern="[A-Za-z_][A-Za-z0-9_]*"></label><label>Database user<input v-model="createForm.postgres_username" required pattern="[A-Za-z_][A-Za-z0-9_]*"></label><label>Database password<input v-model="createForm.postgres_password" type="password" minlength="12" placeholder="Generated securely if left blank"></label><label>Database storage limit<select v-model="createForm.database_size_mb"><option :value="null">No limit</option><option :value="512">512 MB</option><option :value="1024">1 GB</option><option :value="5120">5 GB</option><option :value="10240">10 GB</option></select></label><p class="postgres-help">A selected limit constrains the PostgreSQL container writable layer, including its database files.</p></template><button class="primary-button" :disabled="!templates.length"><Plus :size="16" /> Provision container</button></form></div>
   </main>

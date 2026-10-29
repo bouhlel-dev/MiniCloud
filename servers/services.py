@@ -87,7 +87,7 @@ def provision_server(owner, *, name, image, custom_image, template, env_vars, fr
     with transaction.atomic():
         locked_owner = User.objects.select_for_update().get(pk=owner.pk)
         locked_template = ServerTemplate.objects.get(pk=template.pk)
-        if not locked_owner.has_capacity_for(locked_template):
+        if not locked_owner.has_capacity_for(locked_template, image=image):
             raise QuotaExceededError("Your server, CPU, or memory quota has been reached.")
 
         server = Server(
@@ -132,13 +132,15 @@ def _run_provisioning(server_pk, docker_service=None):
         container_id = service.create_container(server)
         server.container_id = container_id
         server.provisioning_step = Server.ProvisioningStep.READY
-        server.save(update_fields=["container_id", "provisioning_step"])
+        server.provisioning_error = ""
+        server.save(update_fields=["container_id", "provisioning_step", "provisioning_error"])
         server.transition_to(Server.Status.RUNNING)
     except Exception as error:
         server = Server.objects.filter(pk=server_pk).first()
         if server:
             server.provisioning_step = Server.ProvisioningStep.FAILED
-            server.save(update_fields=["provisioning_step"])
+            server.provisioning_error = str(error)[:2000] or "Provisioning failed."
+            server.save(update_fields=["provisioning_step", "provisioning_error"])
             try:
                 server.transition_to(Server.Status.FAILED)
             except ValidationError:
@@ -152,15 +154,33 @@ def _run_provisioning(server_pk, docker_service=None):
 
 def start_server(server, docker_service=None):
     docker_service = docker_service or DockerService()
+    reprovision = False
     with transaction.atomic():
         server = Server.objects.select_for_update().get(pk=server.pk)
-        if server.status not in {Server.Status.STOPPED, Server.Status.FAILED}:
-            raise InvalidServerAction("Only stopped or failed servers can be started.")
-        try:
-            docker_service.start_container(server.container_id, wait_for_php=(server.image == Server.Image.PHP))
-        except DockerServiceError as error:
-            raise ServerServiceError(str(error)) from error
-        server.transition_to(Server.Status.RUNNING)
+        if server.status == Server.Status.FAILED:
+            # Rebuild instead of restarting the old container: the previous
+            # attempt may have used stale limits or a broken entrypoint.
+            if server.container_id:
+                try:
+                    docker_service.remove_container(server.container_id)
+                except DockerServiceError as error:
+                    raise ServerServiceError(str(error)) from error
+            server.container_id = ""
+            server.provisioning_step = Server.ProvisioningStep.ALLOCATING_PORT
+            server.provisioning_error = ""
+            server.save(update_fields=["container_id", "provisioning_step", "provisioning_error"])
+            server.transition_to(Server.Status.CREATING)
+            reprovision = True
+        else:
+            if server.status != Server.Status.STOPPED:
+                raise InvalidServerAction("Only stopped or failed servers can be started.")
+            try:
+                docker_service.start_container(server.container_id, wait_for_php=(server.image == Server.Image.PHP))
+            except DockerServiceError as error:
+                raise ServerServiceError(str(error)) from error
+            server.transition_to(Server.Status.RUNNING)
+    if reprovision:
+        _spawn_provisioning(server.pk, docker_service)
     return server
 
 

@@ -38,9 +38,14 @@ class DockerTerminal:
     def enable_path_reporting(self):
         if not self.supports_path_reporting:
             return
+        # Silence the shell while injecting PS1 so the setup command is not
+        # echoed into the user's terminal, then clear the screen.
         command = (
+            "stty -echo 2>/dev/null\n"
             "PS1=$(printf '%s%s%s' '__MINICLOUD_' "
             "'CWD__$(pwd)__MINICLOUD_' 'CWD__$ ')\n"
+            "stty echo 2>/dev/null\n"
+            "printf '\\033[2J\\033[H'\n"
         )
         self.write(command.encode("utf-8"))
 
@@ -70,28 +75,33 @@ class DockerService:
     PHP_XAMPP_COMMAND = """
         set -eu
         export DEBIAN_FRONTEND=noninteractive
-        apt-get update
-        apt-get install -y --no-install-recommends ca-certificates curl nano procps wget
-        rm -rf /var/lib/apt/lists/*
         installer_url={installer_url}
-        echo "MINICLOUD_XAMPP_DOWNLOADING: Downloading XAMPP installer from $installer_url"
-        for i in 1 2 3; do
-            if wget --timeout=120 --tries=1 --no-verbose --output-document=/tmp/xampp-installer.run "$installer_url"; then
-                break
+        if [ -f /opt/lampp/.minicloud-installed ]; then
+            echo "Reusing the existing XAMPP installation."
+        else
+            apt-get update
+            apt-get install -y --no-install-recommends ca-certificates curl nano net-tools procps wget
+            rm -rf /var/lib/apt/lists/*
+            echo "MINICLOUD_XAMPP_DOWNLOADING: Downloading XAMPP installer from $installer_url"
+            for i in 1 2 3; do
+                if wget --timeout=120 --tries=1 --no-verbose --output-document=/tmp/xampp-installer.run "$installer_url"; then
+                    break
+                fi
+                echo "Download attempt $i failed, retrying..."
+                sleep 5
+            done
+            if [ ! -f /tmp/xampp-installer.run ] || [ ! -s /tmp/xampp-installer.run ]; then
+                echo "MINICLOUD_XAMPP_FAILED: could not download the XAMPP installer" >&2
+                exit 1
             fi
-            echo "Download attempt $i failed, retrying..."
-            sleep 5
-        done
-        if [ ! -f /tmp/xampp-installer.run ] || [ ! -s /tmp/xampp-installer.run ]; then
-            echo "MINICLOUD_XAMPP_FAILED: could not download the XAMPP installer" >&2
-            exit 1
+            chmod +x /tmp/xampp-installer.run
+            echo "MINICLOUD_XAMPP_INSTALLING: Installing XAMPP..."
+            /tmp/xampp-installer.run --mode unattended
+            rm -f /tmp/xampp-installer.run
+            touch /opt/lampp/.minicloud-installed
         fi
-        chmod +x /tmp/xampp-installer.run
-        echo "MINICLOUD_XAMPP_INSTALLING: Installing XAMPP..."
-        /tmp/xampp-installer.run --mode unattended
-        rm -f /tmp/xampp-installer.run
         echo "MINICLOUD_XAMPP_STARTING: Starting XAMPP (Apache + MariaDB + PHP + Perl)..."
-        /opt/lampp/lampp start
+        /opt/lampp/lampp start || true
         ready=0
         for i in 1 2 3 4 5 6 7 8 9 10; do
             if curl -f -s -o /dev/null http://localhost:80; then
@@ -271,8 +281,8 @@ JS
             "name": f"minicloud-{server.pk}",
             "environment": {key: str(value) for key, value in server.env_vars.items()},
             "ports": {image_spec["container_port"]: server.host_port},
-            "mem_limit": int(server.template.memory_mb) * 1024 * 1024,
-            "nano_cpus": int(Decimal(str(server.template.cpu_limit)) * Decimal("1000000000")),
+            "mem_limit": server.effective_memory_mb * 1024 * 1024,
+            "nano_cpus": int(Decimal(str(server.effective_cpu_limit)) * Decimal("1000000000")),
             "labels": {
                 "minicloud.managed": "true",
                 "minicloud.server_id": str(server.pk),
@@ -352,11 +362,15 @@ JS
         installer_url = shlex.quote(settings.MINICLOUD_XAMPP_INSTALLER_URL)
         return dedent(DockerService.PHP_XAMPP_COMMAND).strip().format(installer_url=installer_url)
 
-    def _wait_for_xampp_ready(self, container, server=None, max_wait=None, interval=3):
+    def _wait_for_xampp_ready(self, container, server=None, max_wait=None, interval=3, since=None):
         """Track XAMPP setup from container output and wait until Apache is serving."""
         import time
         if max_wait is None:
             max_wait = getattr(settings, "MINICLOUD_XAMPP_READY_TIMEOUT", 1800)
+        # Only read log lines produced by this run, otherwise a previous
+        # MINICLOUD_XAMPP_READY marker would make a restart look successful.
+        if since is None:
+            since = int(time.time()) - 1
         markers = (
             ("MINICLOUD_XAMPP_DOWNLOADING", Server.ProvisioningStep.DOWNLOADING_XAMPP),
             ("MINICLOUD_XAMPP_INSTALLING", Server.ProvisioningStep.INSTALLING_XAMPP),
@@ -368,7 +382,7 @@ JS
         start_time = time.time()
         while time.time() - start_time < max_wait:
             try:
-                raw = container.logs(tail=400)
+                raw = container.logs(tail=400, since=since)
                 logs = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else str(raw)
             except DockerException:
                 logs = ""
@@ -388,11 +402,26 @@ JS
             try:
                 container.reload()
                 if container.status not in {"running", "created"}:
-                    raise DockerServiceError("The XAMPP container stopped before it became ready.")
+                    raise DockerServiceError(self._xampp_exit_message(container, server))
             except DockerException:
                 pass
             time.sleep(interval)
         raise DockerServiceError("XAMPP did not become ready in time. Check container logs for details.")
+
+    def _xampp_exit_message(self, container, server=None):
+        state = getattr(container, "attrs", {})
+        state = state.get("State", {}) if isinstance(state, dict) else {}
+        exit_code = state.get("ExitCode") if isinstance(state, dict) else None
+        if state.get("OOMKilled") or exit_code == 137:
+            limit = server.effective_memory_mb if server is not None else None
+            limit_text = f"{limit} MB" if limit else "its memory limit"
+            return (
+                f"Docker killed XAMPP because it ran out of memory ({limit_text}). "
+                "Choose a template with more memory and start the server again."
+            )
+        if exit_code is not None:
+            return f"The XAMPP container stopped before it became ready (exit code {exit_code}). Check the container logs for details."
+        return "The XAMPP container stopped before it became ready. Check the container logs for details."
 
     def start_container(self, container_id, wait_for_php=False):
         self._run_container_action(container_id, "start")
