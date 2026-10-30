@@ -94,10 +94,3 @@ Send it as `Authorization: Token <token>`. Available endpoints:
 
 GitHub Actions runs Ruff, Django checks, migration drift checks, and pytest against PostgreSQL and Redis.
 
-## Demo GIF
-
-Add a short capture of the dashboard workflow here once recorded:
-
-`docs/demo.gif`
-
-Suggested sequence: seed the demo user, create an Nginx server, open its telemetry dashboard, stop and restart the container, then show the live logs and incident history.
