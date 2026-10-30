@@ -173,6 +173,9 @@ h3 { font-size: .92rem; }
 .visit-link { color: #238b68; font: 700 .75rem 'DM Mono', monospace; text-decoration: none; padding: .5rem 1rem; border: 1px solid #238b68; border-radius: 3px; transition: all .2s; }
 .visit-link:hover { background: #238b68; color: #fff; }
 .provisioning-hint { margin: 0; color: #849089; font-size: .72rem; }
+.provisioning-footer { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.provisioning-failed { display: flex; align-items: start; justify-content: space-between; gap: 1.5rem; }
+.provisioning-failed .detail-control { flex: 0 0 auto; }
 .provisioning-complete { margin: 1.5rem 0; }
 .provisioning-failed { margin: 1.5rem 0; padding: 1.25rem 1.5rem; background: #fdecea; border: 1px solid #f5c2bd; border-radius: 6px; }
 .provisioning-failed h3 { margin: 0 0 .35rem; color: #b3261e; font-size: 1rem; }
@@ -180,11 +183,60 @@ h3 { font-size: .92rem; }
 .provisioning-failed p.provisioning-error-reason { margin-top: .6rem; padding-top: .6rem; border-top: 1px solid #f5c2bd; font: .72rem 'DM Mono', monospace; }
 .detail-cards .limit-note { color: #238b68; font: .6rem 'DM Mono', monospace; text-transform: uppercase; letter-spacing: .08em; }
 
+/* Unified server summary */
+.server-summary { margin: 2rem 0 1.5rem; border: 1px solid #dce4de; background: #fff; }
+.summary-main { display: grid; gap: .85rem; padding: 1.15rem 1.5rem; border-bottom: 1px solid #eef2ee; }
+.summary-heading { display: flex; align-items: center; flex-wrap: wrap; gap: .6rem 1rem; }
+.summary-state { display: inline-flex; align-items: center; gap: .35rem; padding: .25rem .5rem; background: #dff1e4; color: #238b68; font: .6rem 'DM Mono', monospace; text-transform: uppercase; letter-spacing: .06em; }
+.summary-state.stopped { background: #f6edcf; color: #9d782e; }
+.summary-image { color: #66736d; font-size: .78rem; font-weight: 700; }
+.summary-link { display: inline-flex; align-items: center; gap: .3rem; margin-left: auto; color: #238b68; font: 700 .72rem 'DM Mono', monospace; text-decoration: none; }
+.summary-link:hover { text-decoration: underline; }
+.summary-connection { display: flex; align-items: center; gap: .75rem; padding: .65rem .8rem; border: 1px solid #dce4de; background: #f7faf7; }
+.summary-connection code { min-width: 0; flex: 1; overflow: auto; white-space: nowrap; color: #17211f; font: .72rem 'DM Mono', monospace; }
+.summary-connection button { display: inline-flex; align-items: center; gap: .4rem; flex: 0 0 auto; border: 1px solid #238b68; padding: .4rem .6rem; background: transparent; color: #238b68; font: 700 .64rem 'DM Mono', monospace; }
+.summary-connection button:hover { background: #238b68; color: #fff; }
+.summary-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin: 0; }
+.summary-stats > div { display: grid; gap: .25rem; padding: .95rem 1.5rem; border-right: 1px solid #eef2ee; }
+.summary-stats > div:last-child { border-right: 0; }
+.summary-stats dt { color: #8a968f; font: .6rem 'DM Mono', monospace; text-transform: uppercase; letter-spacing: .06em; }
+.summary-stats dd { display: flex; align-items: baseline; gap: .25rem; margin: 0; font-size: 1.15rem; font-weight: 800; letter-spacing: -.04em; }
+.summary-stats dd i { color: #849089; font-size: .7em; font-style: normal; font-weight: 500; }
+.summary-stats small { color: #9aa79f; font: .58rem 'DM Mono', monospace; }
+
+/* Tools dock — database, shell, logs, and details share one panel */
+.detail-dock { margin: 1.5rem 0 3rem; border: 1px solid #dce4de; background: #fff; }
+.dock-tabs { display: flex; align-items: center; flex-wrap: wrap; gap: .35rem; padding: .55rem .75rem; border-bottom: 1px solid #dce4de; background: #f7faf7; }
+.dock-label { margin-right: auto; color: #9aa79f; font: .6rem 'DM Mono', monospace; text-transform: uppercase; letter-spacing: .1em; }
+.dock-tabs button { display: inline-flex; align-items: center; gap: .45rem; border: 1px solid transparent; border-radius: 3px; padding: .5rem .7rem; background: transparent; color: #66736d; font: 700 .68rem 'Manrope', sans-serif; }
+.dock-tabs button:hover:not(:disabled) { background: #eef5ef; color: #238b68; }
+.dock-tabs button.active { border-color: #b8dfc5; background: #e3f2e8; color: #17694f; }
+.dock-tabs button:disabled { cursor: not-allowed; opacity: .4; }
+.dock-tabs button b { display: grid; place-items: center; min-width: 1.15rem; height: 1.15rem; padding: 0 .25rem; border-radius: 999px; background: #fae0d8; color: #c85e48; font: .55rem 'DM Mono', monospace; }
+.dock-live-dot { width: .4rem; height: .4rem; border-radius: 50%; background: #238b68; }
+.dock-panel { padding: 1rem; }
+.dock-panel .logs-card, .dock-panel .incidents-card { margin: 0; }
+.logs-panel .logs-content { min-height: 260px; max-height: 420px; }
+.terminal-panel { padding: 0; overflow: hidden; background: #0f1714; }
+.terminal-panel .terminal-bar { padding: .8rem 1rem; }
+.terminal-panel .real-terminal-body { height: 360px; box-shadow: none; }
+.database-panel { padding: 0; }
+.database-panel .database-workbench { margin: 0; border: 0; }
+.details-panel { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; }
+@media (max-width: 900px) {
+  .details-panel { grid-template-columns: 1fr; }
+  .summary-connection { flex-direction: column; align-items: stretch; }
+  .summary-connection button { align-self: flex-start; }
+  .provisioning-footer, .provisioning-failed { flex-direction: column; align-items: stretch; }
+}
+
+
 /* PostgreSQL workbench */
-.database-workbench { margin: 2rem 0 1.5rem; border: 1px solid #dce4de; background: #fff; }
-.db-header { display: flex; align-items: end; justify-content: space-between; gap: 1rem; padding: 1.25rem 1.5rem; border-bottom: 1px solid #dce4de; }
-.db-header h3 { display: flex; align-items: center; gap: .5rem; font-size: 1.1rem; }
-.db-header h3 svg { color: #238b68; }
+.database-workbench { margin: 1.5rem 0; border: 1px solid #dce4de; background: #fff; }
+.db-header { display: flex; align-items: end; justify-content: space-between; gap: 1rem; padding: 1.15rem 1.5rem; border-bottom: 1px solid #dce4de; }
+.db-heading h3 { display: flex; align-items: center; gap: .5rem; font-size: 1.1rem; }
+.db-heading h3 svg { color: #238b68; }
+.db-heading p { margin-top: .3rem; color: #8a968f; font: .63rem 'DM Mono', monospace; }
 .db-header-actions { display: flex; align-items: center; gap: .5rem; }
 .db-database-select select { min-width: 150px; padding: .5rem .65rem; font: .72rem 'DM Mono', monospace; }
 .db-tabs { display: flex; gap: .25rem; padding: 0 1.5rem; border-bottom: 1px solid #dce4de; background: #f7faf7; }
@@ -208,6 +260,7 @@ h3 { font-size: .92rem; }
 .db-table-header h3 { font-size: 1rem; }
 .db-table-header p { margin-top: .3rem; color: #8a968f; font: .63rem 'DM Mono', monospace; }
 .db-table-actions { display: flex; flex-wrap: wrap; gap: .4rem; }
+.db-icon-button { display: grid; place-items: center; width: 2.15rem; height: 2.15rem; padding: 0; }
 .db-table-actions .detail-control.danger { margin-left: 0; }
 .db-grid-scroll { overflow: auto; max-height: 440px; border: 1px solid #dce4de; }
 .db-grid { width: 100%; border-collapse: collapse; font: .7rem 'DM Mono', monospace; }

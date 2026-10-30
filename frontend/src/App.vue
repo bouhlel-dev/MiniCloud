@@ -1,11 +1,11 @@
 ﻿<script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import {
-  ArrowLeft, ArrowUpRight, Box, ChevronLeft, ChevronRight, CircleDot, Cpu, Database, LayoutDashboard, Network,
-  LogOut, Pencil, Play, Plus, RefreshCw, RotateCw, Server, Table2, Trash2, X,
+  ArrowLeft, ArrowUpRight, Box, Check, ChevronLeft, ChevronRight, CircleDot, Copy, Cpu, Database, Eraser, Info, LayoutDashboard, Network,
+  LogOut, Pencil, Play, Plus, RefreshCw, RotateCw, ScrollText, Server, SquareTerminal, Table2, Trash2, X,
 } from '@lucide/vue'
 
 const apiBase = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000/api'
@@ -28,6 +28,8 @@ const terminalStatus = ref('Offline')
 const terminalPath = ref('Resolving path…')
 const logs = ref('')
 const logsStatus = ref('Connecting...')
+const logsHost = ref(null)
+let logsPinnedToBottom = true
 const createForm = ref({ name: '', image: 'nginx', framework: '', database_size_mb: null, template: '', custom_image: '', env_vars: {}, postgres_database: 'minicloud', postgres_username: 'minicloud', postgres_password: '' })
 let terminal = null
 let terminalSocket = null
@@ -58,6 +60,8 @@ const databaseState = () => ({
 const db = ref(databaseState())
 const rowEditor = ref({ open: false, mode: 'insert', fields: {}, key: null, error: '', saving: false })
 const tableCreator = ref({ open: false, schema: 'public', name: '', columns: [], error: '', saving: false })
+const detailPanel = ref('')
+const copiedField = ref('')
 const dbColumnTypes = [
   'serial', 'bigserial', 'integer', 'bigint', 'smallint', 'numeric(10,2)', 'real', 'double precision',
   'text', 'varchar(255)', 'char(10)', 'boolean', 'date', 'timestamptz', 'timestamp', 'time',
@@ -366,6 +370,52 @@ const api = async (path, options = {}) => {
 const runningCount = computed(() => servers.value.filter(server => server.status === 'running').length)
 const totalMemory = computed(() => servers.value.reduce((total, server) => total + (server.effective_memory_mb ?? server.template_memory_mb ?? 0), 0))
 
+const latestMetric = computed(() => liveMetric.value || metrics.value[metrics.value.length - 1] || null)
+const cpuUsage = computed(() => Number(latestMetric.value?.cpu_percent ?? 0).toFixed(2))
+const memoryUsage = computed(() => {
+  const value = latestMetric.value?.memory_mb
+  return value === undefined || value === null ? '—' : Number(value).toFixed(1)
+})
+
+async function copyText(value, field) {
+  if (!value) return
+  try {
+    await navigator.clipboard.writeText(value)
+    copiedField.value = field
+    window.setTimeout(() => { if (copiedField.value === field) copiedField.value = '' }, 1600)
+  } catch {
+    window.prompt('Copy this value', value)
+  }
+}
+
+async function openDetailPanel(panel) {
+  if (detailPanel.value === panel) {
+    closeDetailPanel()
+    return
+  }
+  closeDetailPanel()
+  const server = selectedServer.value
+  if (!server) return
+  if (panel === 'shell' && server.status !== 'running') return
+  if (panel === 'database' && !(server.image === 'postgres' && server.status === 'running')) return
+  if (panel === 'logs' && !['creating', 'running'].includes(server.status)) return
+  detailPanel.value = panel
+  await nextTick()
+  if (panel === 'shell') openTerminal()
+  if (panel === 'logs') openLogs()
+}
+
+function closeDetailPanel() {
+  if (detailPanel.value === 'shell') closeTerminal()
+  if (detailPanel.value === 'logs') closeLogs()
+  detailPanel.value = ''
+}
+
+function closeDetailPanels() {
+  closeDetailPanel()
+  copiedField.value = ''
+}
+
 const provisioningSteps = [
   { key: 'allocating_port', label: 'Allocating port' },
   { key: 'pulling_image', label: 'Pulling image' },
@@ -414,10 +464,9 @@ function startProvisioningPoll() {
         if (updated) {
           const wasCreating = current.status === 'creating'
           selectedServer.value = updated
-          if (updated.container_id) openLogs()
           if (wasCreating && updated.status === 'running') {
             await refreshLiveMetric()
-            openTerminal()
+            if (updated.image === 'postgres') loadDatabase()
           }
         }
       }
@@ -444,6 +493,7 @@ function logout() {
   closeTerminal()
   stopProvisioningPoll()
   resetDatabase()
+  closeDetailPanels()
   token.value = ''
   username.value = ''
   servers.value = []
@@ -473,18 +523,17 @@ async function loadDashboard() {
 }
 
 async function selectServer(id) {
-  closeTerminal()
-  closeLogs()
+  closeDetailPanels()
   resetDatabase()
   selectedServer.value = servers.value.find(server => server.id === id) || null
   if (!selectedServer.value) return
   showDetail.value = true
   metrics.value = await api(`/servers/${id}/metrics/`)
   await refreshLiveMetric()
-  await nextTick()
-  openTerminal()
-  openLogs()
-  if (selectedServer.value.image === 'postgres' && selectedServer.value.status === 'running') loadDatabase()
+  if (selectedServer.value.image === 'postgres' && selectedServer.value.status === 'running') {
+    detailPanel.value = 'database'
+    loadDatabase()
+  }
   if (selectedServer.value.status === 'creating') startProvisioningPoll()
 }
 
@@ -497,8 +546,7 @@ async function refreshLiveMetric() {
 }
 
 function closeDetail() {
-  closeTerminal()
-  closeLogs()
+  closeDetailPanels()
   resetDatabase()
   showDetail.value = false
   selectedServer.value = null
@@ -554,11 +602,38 @@ function closeLogs() {
   logsSocket = null
   logs.value = ''
   logsStatus.value = 'Disconnected'
+  logsPinnedToBottom = true
 }
+
+function scrollLogsToBottom(force = false) {
+  const host = logsHost.value
+  if (!host) return
+  if (!force && !logsPinnedToBottom) return
+  host.scrollTop = host.scrollHeight
+}
+
+function trackLogsScroll() {
+  const host = logsHost.value
+  if (!host) return
+  logsPinnedToBottom = host.scrollHeight - host.scrollTop - host.clientHeight < 48
+}
+
+watch(logs, async () => {
+  await nextTick()
+  scrollLogsToBottom()
+})
+
+watch(detailPanel, async panel => {
+  if (panel !== 'logs') return
+  await nextTick()
+  logsPinnedToBottom = true
+  scrollLogsToBottom(true)
+})
 
 function openLogs() {
   const server = selectedServer.value
-  if (!server || !['creating', 'running'].includes(server.status) || !server.container_id || !token.value || logsSocket) return
+  if (!server || detailPanel.value !== 'logs' || !['creating', 'running'].includes(server.status) || !server.container_id || !token.value || logsSocket) return
+  logsPinnedToBottom = true
   const socketUrl = new URL(apiBase)
   socketUrl.protocol = socketUrl.protocol === 'https:' ? 'wss:' : 'ws:'
   socketUrl.pathname = `/ws/servers/${server.id}/logs/`
@@ -631,7 +706,7 @@ function terminalCloseMessage(code) {
 }
 
 function openTerminal() {
-  if (!selectedServer.value || selectedServer.value.status !== 'running' || !terminalHost.value || !token.value || terminalSocket) return
+  if (!selectedServer.value || selectedServer.value.status !== 'running' || detailPanel.value !== 'shell' || !terminalHost.value || !token.value || terminalSocket) return
   disposeTerminalView()
   const activeTerminal = new Terminal({ cursorBlink: true, fontFamily: 'DM Mono, monospace', fontSize: 13, theme: { background: '#0f1714', foreground: '#f0fff4', cursor: '#c9f2df' } })
   terminal = activeTerminal
@@ -686,12 +761,12 @@ function openTerminal() {
     activeTerminal.write(`\r\n\x1b[31m${message}\x1b[0m\r\n`)
     // A container restart closes the shell unexpectedly; reopen it automatically.
     const retryable = ![1000, 4404].includes(event.code)
-    if (retryable && terminalRetryCount < 3 && selectedServer.value?.id === serverId && selectedServer.value.status === 'running' && showDetail.value) {
+    if (retryable && terminalRetryCount < 3 && detailPanel.value === 'shell' && selectedServer.value?.id === serverId && selectedServer.value.status === 'running' && showDetail.value) {
       const delay = [3000, 6000, 10000][terminalRetryCount] || 10000
       terminalRetryCount += 1
       terminalStatus.value = `Reconnecting (${terminalRetryCount}/3)...`
       window.setTimeout(() => {
-        if (!terminalSocket && selectedServer.value?.id === serverId && selectedServer.value.status === 'running' && showDetail.value) openTerminal()
+        if (!terminalSocket && detailPanel.value === 'shell' && selectedServer.value?.id === serverId && selectedServer.value.status === 'running' && showDetail.value) openTerminal()
       }, delay)
     }
   }
@@ -769,7 +844,7 @@ onBeforeUnmount(() => { closeTerminal(); closeLogs(); stopProvisioningPoll() })
 
 <section v-if="showDetail && selectedServer" class="server-detail-page">
       <div class="detail-toolbar"><button class="back-button" @click="closeDetail"><ArrowLeft :size="15" /> All servers</button><span :class="['status', selectedServer.status]">{{ selectedServer.status_display }}</span></div>
-      <div class="detail-heading"><div><div class="eyebrow">Selected resource / container details</div><h2>{{ selectedServer.name }}</h2><p class="detail-meta"><span><Box :size="13" /> {{ selectedServer.framework_display || selectedServer.image_display }}</span><span><Cpu :size="13" /> {{ selectedServer.template_name }}</span><span><Network :size="13" /> {{ selectedServer.host_port || 'Not mapped' }}</span></p></div><span class="live-dot"><CircleDot :size="11" /> LIVE</span></div>
+      <div class="detail-heading"><div><div class="eyebrow">{{ selectedServer.image === 'postgres' ? 'Databases / PostgreSQL' : 'Selected resource / container details' }}</div><h2>{{ selectedServer.name }}</h2><p class="detail-meta"><span><Box :size="13" /> {{ selectedServer.framework_display || selectedServer.image_display }}</span><span><Cpu :size="13" /> {{ selectedServer.template_name }}</span></p></div><span v-if="selectedServer.status === 'running'" class="live-dot"><CircleDot :size="11" /> LIVE</span></div>
       <div class="detail-controls" aria-label="Server controls">
         <button v-if="['stopped', 'failed'].includes(selectedServer.status)" class="detail-control primary" :disabled="Boolean(lifecycleAction)" @click="lifecycle('start', selectedServer)">{{ lifecycleAction === 'start' ? 'Starting…' : 'Start server' }}</button>
         <button v-if="selectedServer.status === 'running'" class="detail-control" :disabled="Boolean(lifecycleAction)" @click="lifecycle('stop', selectedServer)">{{ lifecycleAction === 'stop' ? 'Stopping…' : 'Stop server' }}</button>
@@ -777,10 +852,6 @@ onBeforeUnmount(() => { closeTerminal(); closeLogs(); stopProvisioningPoll() })
         <button class="detail-control" :disabled="loading || Boolean(lifecycleAction)" @click="loadDashboard"><RefreshCw :size="14" /> Refresh</button>
         <button class="detail-control danger" :disabled="Boolean(lifecycleAction)" @click="deleteServer(selectedServer)"><Trash2 :size="14" /> Delete</button>
       </div>
-      <a v-if="selectedServer.site_url" class="site-url-card" :href="selectedServer.site_url" target="_blank" rel="noreferrer">Published URL: {{ selectedServer.site_url }} <ArrowUpRight :size="15" /></a>
-      <div v-if="selectedServer.postgres_connection_string" class="database-connection"><div><span>POSTGRESQL CONNECTION URI</span><code>{{ selectedServer.postgres_connection_string }}</code></div><button type="button" @click="navigator.clipboard.writeText(selectedServer.postgres_connection_string)">Copy</button></div>
-      <div v-if="selectedServer.image === 'postgres'" class="database-storage"><span>POSTGRESQL STORAGE LIMIT</span><strong>{{ selectedServer.database_size_display }}</strong><small>Applies to the container writable layer.</small></div>
-
       <!-- Provisioning progress indicator -->
       <div v-if="selectedServer.status === 'creating'" class="provisioning-indicator">
         <div class="provisioning-header">
@@ -797,227 +868,252 @@ onBeforeUnmount(() => { closeTerminal(); closeLogs(); stopProvisioningPoll() })
             <div class="step-label">{{ step.label }}</div>
           </div>
         </div>
-        <p class="provisioning-hint">Setup runs in the background and can take a few minutes. This page updates automatically.</p>
-      </div>
-
-      <div v-else-if="selectedServer.status === 'running'" class="provisioning-complete">
-        <CircleDot :size="20" class="ready-icon" />
-        <span>Server is ready for use!</span>
-        <a v-if="selectedServer.site_url" :href="selectedServer.site_url" target="_blank" rel="noreferrer" class="visit-link">Visit site →</a>
+        <div class="provisioning-footer">
+          <p class="provisioning-hint">Setup runs in the background and can take a few minutes. This page updates automatically.</p>
+          <button type="button" class="detail-control" :disabled="!selectedServer.container_id" @click="openDetailPanel('logs')"><ScrollText :size="14" /> View live logs</button>
+        </div>
       </div>
 
       <div v-else-if="selectedServer.status === 'failed'" class="provisioning-failed">
-        <h3>Setup failed</h3>
-        <p>Stopped at step: <strong>{{ selectedServer.provisioning_step_display }}</strong>. Start the server again or check the logs below for details.</p>
-        <p v-if="selectedServer.provisioning_error" class="provisioning-error-reason">{{ selectedServer.provisioning_error }}</p>
-      </div>
-
-      <!-- Live telemetry (original) -->
-      <div class="detail-cards">
-        <article><span>CPU limit</span><strong>{{ selectedServer.effective_cpu_limit ?? selectedServer.template_cpu_limit }} <i>cores</i></strong></article>
-        <article><span>Latest memory</span><strong v-if="liveMetric?.memory_mb !== undefined || metrics.at(-1)?.memory_mb !== undefined">{{ liveMetric?.memory_mb ?? metrics.at(-1)?.memory_mb }} <i>MB</i></strong><strong v-else>Not available</strong></article>
-        <article><span>CPU activity</span><strong>{{ liveMetric?.cpu_percent ?? metrics.at(-1)?.cpu_percent ?? '0.00' }}%</strong></article>
-        <article><span>Uptime</span><strong>{{ liveMetric?.uptime_display || 'Not available' }}</strong></article>
-      </div>
-
-      <!-- Resource limits and container details -->
-      <div class="detail-grid">
-        <div class="detail-cards resource-limits">
-          <article><span>CPU limit</span><strong>{{ selectedServer.effective_cpu_limit ?? selectedServer.template_cpu_limit }} <i>cores</i></strong></article>
-          <article>
-            <span>Memory limit</span>
-            <strong>{{ selectedServer.effective_memory_mb ?? selectedServer.template_memory_mb }} <i>MB</i></strong>
-            <small v-if="selectedServer.effective_memory_mb > selectedServer.template_memory_mb" class="limit-note">XAMPP minimum</small>
-          </article>
-          <article><span>Host port</span><strong>{{ selectedServer.host_port || 'Not assigned' }}</strong></article>
-          <article><span>Open incidents</span><strong>{{ selectedServer.open_incidents_count }}</strong></article>
+        <div>
+          <h3>Setup failed</h3>
+          <p>Stopped at step: <strong>{{ selectedServer.provisioning_step_display }}</strong>. Start the server again or check the logs for details.</p>
+          <p v-if="selectedServer.provisioning_error" class="provisioning-error-reason">{{ selectedServer.provisioning_error }}</p>
         </div>
-        <div class="container-details-card">
-          <h3>Container details</h3>
-          <dl class="container-details">
-            <div><dt>Template</dt><dd>{{ selectedServer.template_name }} ({{ selectedServer.template_cpu_limit }} CPU / {{ selectedServer.template_memory_mb }} MB)</dd></div>
-            <div v-if="selectedServer.effective_memory_mb > selectedServer.template_memory_mb"><dt>Memory limit</dt><dd>{{ selectedServer.effective_memory_mb }} MB (XAMPP minimum)</dd></div>
-            <div><dt>Host port</dt><dd>{{ selectedServer.host_port || 'Not assigned' }}</dd></div>
-            <div><dt>Container ID</dt><dd><code>{{ selectedServer.container_id || 'Not created' }}</code></dd></div>
-            <div><dt>Created</dt><dd>{{ formatDate(selectedServer.created_at) }}</dd></div>
-          </dl>
-        </div>
+        <button type="button" class="detail-control" @click="openDetailPanel('logs')"><ScrollText :size="14" /> View logs</button>
       </div>
 
-      <!-- PostgreSQL workbench -->
-      <div v-if="selectedServer.image === 'postgres' && selectedServer.status === 'running'" class="database-workbench">
-        <div class="db-header">
-          <div>
-            <div class="eyebrow">Database workbench</div>
-            <h3><Database :size="16" /> PostgreSQL{{ db.version ? ` ${db.version}` : '' }}</h3>
+      <!-- Unified status + connection + telemetry summary -->
+      <div v-else-if="['running', 'stopped'].includes(selectedServer.status)" class="server-summary">
+        <div class="summary-main">
+          <div class="summary-heading">
+            <span :class="['summary-state', { stopped: selectedServer.status !== 'running' }]"><CircleDot :size="12" /> {{ selectedServer.status === 'running' ? 'Ready' : 'Stopped' }}</span>
+            <span class="summary-image">{{ selectedServer.image === 'postgres' ? 'PostgreSQL database' : selectedServer.image_display }}</span>
+            <a v-if="selectedServer.site_url" :href="selectedServer.site_url" target="_blank" rel="noreferrer" class="summary-link">Open site <ArrowUpRight :size="14" /></a>
           </div>
-          <div class="db-header-actions">
-            <span class="db-database-select">
-              <select :value="db.database" aria-label="Active database" @change="loadDatabase($event.target.value)">
-                <option v-for="item in db.databases" :key="item.name" :value="item.name">{{ item.name }}</option>
-              </select>
-            </span>
-            <button type="button" class="detail-control" :disabled="db.loading" @click="loadDatabase()"><RefreshCw :size="14" /> Refresh</button>
-            <button type="button" class="detail-control primary" @click="openTableCreator"><Plus :size="14" /> New table</button>
-          </div>
-        </div>
-
-        <p v-if="db.error" class="notice error">{{ db.error }}</p>
-
-        <div class="db-tabs" role="tablist">
-          <button type="button" :class="{ active: db.tab === 'data' }" @click="setDatabaseTab('data')">Data</button>
-          <button type="button" :class="{ active: db.tab === 'structure' }" :disabled="!db.table" @click="setDatabaseTab('structure')">Structure</button>
-          <button type="button" :class="{ active: db.tab === 'sql' }" @click="setDatabaseTab('sql')">SQL console</button>
-        </div>
-
-        <div class="db-body">
-          <aside class="db-sidebar">
-            <div class="db-sidebar-heading"><span>Tables</span><b>{{ db.tables.length }}</b></div>
-            <p v-if="db.loading && !db.tables.length" class="db-empty">Loading tables…</p>
-            <p v-else-if="!db.tables.length" class="db-empty">No tables yet. Create your first table.</p>
-            <button
-              v-for="table in db.tables"
-              :key="`${table.schema}.${table.name}`"
-              type="button"
-              :class="['db-table-item', { active: db.selected?.schema === table.schema && db.selected?.name === table.name }]"
-              @click="selectDatabaseTable(table)"
-            >
-              <span class="db-table-name"><Table2 :size="13" /> {{ table.name }}</span>
-              <span class="db-table-meta">{{ table.schema }} · ~{{ table.estimated_rows }} rows · {{ formatBytes(table.size_bytes) }}</span>
+          <div v-if="selectedServer.postgres_connection_string" class="summary-connection">
+            <code>{{ selectedServer.postgres_connection_string }}</code>
+            <button type="button" @click="copyText(selectedServer.postgres_connection_string, 'connection')">
+              <Check v-if="copiedField === 'connection'" :size="13" /><Copy v-else :size="13" />
+              {{ copiedField === 'connection' ? 'Copied' : 'Copy URI' }}
             </button>
-          </aside>
+          </div>
+        </div>
+        <dl class="summary-stats">
+          <div><dt>CPU</dt><dd>{{ cpuUsage }}<i>%</i></dd><small>of {{ selectedServer.effective_cpu_limit ?? selectedServer.template_cpu_limit }} cores</small></div>
+          <div><dt>Memory</dt><dd>{{ memoryUsage }}<i>MB</i></dd><small>of {{ selectedServer.effective_memory_mb ?? selectedServer.template_memory_mb }} MB</small></div>
+          <div><dt>Uptime</dt><dd>{{ latestMetric?.uptime_display || '—' }}</dd><small>since last restart</small></div>
+          <div><dt>Host port</dt><dd>{{ selectedServer.host_port || '—' }}</dd><small>{{ selectedServer.postgres_connection_string ? 'published on localhost' : 'container mapping' }}</small></div>
+          <div v-if="selectedServer.image === 'postgres'"><dt>Storage</dt><dd>{{ selectedServer.database_size_display || 'No limit' }}</dd><small>writable layer</small></div>
+        </dl>
+      </div>
 
-          <div class="db-main">
-            <!-- SQL console -->
-            <div v-if="db.tab === 'sql'" class="db-sql">
-              <div class="db-sql-bar">
-                <span>Run SQL against <strong>{{ db.database }}</strong></span>
-                <button type="button" class="detail-control primary" :disabled="db.running" @click="runDatabaseQuery"><Play :size="13" /> {{ db.running ? 'Running…' : 'Run query' }}</button>
+      <!-- Cohesive tools dock: one panel open at a time -->
+      <div class="detail-dock">
+        <div class="dock-tabs" role="tablist" aria-label="Server tools">
+          <span class="dock-label">Tools</span>
+          <button type="button" role="tab" :aria-selected="detailPanel === 'shell'" :class="{ active: detailPanel === 'shell' }" :disabled="selectedServer.status !== 'running'" @click="openDetailPanel('shell')"><SquareTerminal :size="14" /> Shell</button>
+          <button v-if="selectedServer.image === 'postgres'" type="button" role="tab" :aria-selected="detailPanel === 'database'" :class="{ active: detailPanel === 'database' }" :disabled="selectedServer.status !== 'running'" @click="openDetailPanel('database')"><Database :size="14" /> Database</button>
+          <button type="button" role="tab" :aria-selected="detailPanel === 'logs'" :class="{ active: detailPanel === 'logs' }" :disabled="!['creating', 'running'].includes(selectedServer.status)" @click="openDetailPanel('logs')"><ScrollText :size="14" /> Logs <i v-if="logsStatus === 'Connected'" class="dock-live-dot"></i></button>
+          <button type="button" role="tab" :aria-selected="detailPanel === 'details'" :class="{ active: detailPanel === 'details' }" @click="openDetailPanel('details')"><Info :size="14" /> Details <b v-if="selectedServer.open_incidents_count">{{ selectedServer.open_incidents_count }}</b></button>
+        </div>
+
+        <div v-if="detailPanel === 'database' && selectedServer.status === 'running'" class="dock-panel database-panel">
+          <div class="database-workbench">
+            <div class="db-header">
+              <div class="db-heading">
+                <h3><Database :size="16" /> {{ db.database || 'PostgreSQL' }}</h3>
+                <p>{{ db.version ? `PostgreSQL ${db.version}` : 'PostgreSQL database' }} · {{ db.tables.length }} table{{ db.tables.length === 1 ? '' : 's' }}</p>
               </div>
-              <textarea
-                v-model="db.sql"
-                class="db-sql-input"
-                spellcheck="false"
-                placeholder="SELECT * FROM public.my_table LIMIT 100;"
-                @keydown.ctrl.enter.prevent="runDatabaseQuery"
-                @keydown.meta.enter.prevent="runDatabaseQuery"
-              ></textarea>
-              <p class="db-sql-hint">Ctrl + Enter runs the statement. Results are capped at 500 rows.</p>
-              <div v-if="db.result" class="db-sql-result">
-                <div class="db-sql-meta">
-                  <span>{{ db.result.command || 'Result' }}</span>
-                  <span>{{ db.result.row_count }} row{{ db.result.row_count === 1 ? '' : 's' }}{{ db.result.truncated ? ' (truncated)' : '' }} · {{ db.result.duration_ms }} ms</span>
-                </div>
-                <div v-if="db.result.columns.length" class="db-grid-scroll">
-                  <table class="db-grid">
-                    <thead><tr><th v-for="column in db.result.columns" :key="column">{{ column }}</th></tr></thead>
-                    <tbody>
-                      <tr v-for="(row, index) in db.result.rows" :key="index">
-                        <td v-for="(cell, cellIndex) in row" :key="cellIndex" :class="{ 'db-null': cell === null }">{{ formatCell(cell) }}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-                <p v-else class="db-empty">{{ db.result.command || 'Statement executed.' }}</p>
+              <div class="db-header-actions">
+                <span class="db-database-select">
+                  <select :value="db.database" aria-label="Switch database" @change="loadDatabase($event.target.value)">
+                    <option v-for="item in db.databases" :key="item.name" :value="item.name">{{ item.name }}</option>
+                  </select>
+                </span>
+                <button type="button" class="detail-control db-icon-button" :disabled="db.loading" title="Refresh" aria-label="Refresh" @click="loadDatabase()"><RefreshCw :size="15" /></button>
+                <button type="button" class="detail-control primary" @click="openTableCreator"><Plus :size="14" /> New table</button>
               </div>
             </div>
 
-            <!-- Table data / structure -->
-            <template v-else-if="db.table">
-              <div class="db-table-header">
-                <div>
-                  <h3>{{ db.table.schema }}.{{ db.table.table }}</h3>
-                  <p>{{ db.table.total_rows }} row{{ db.table.total_rows === 1 ? '' : 's' }} · {{ db.table.columns.length }} column{{ db.table.columns.length === 1 ? '' : 's' }}</p>
-                </div>
-                <div class="db-table-actions">
-                  <button type="button" class="detail-control" @click="openRowEditor()"><Plus :size="13" /> Add row</button>
-                  <button type="button" class="detail-control" @click="truncateDatabaseTable">Truncate</button>
-                  <button type="button" class="detail-control danger" @click="dropDatabaseTable"><Trash2 :size="13" /> Drop</button>
-                </div>
-              </div>
+            <p v-if="db.error" class="notice error">{{ db.error }}</p>
 
-              <div v-if="db.tab === 'data'" class="db-data">
-                <div class="db-grid-scroll">
-                  <table class="db-grid db-grid-editable">
-                    <thead>
-                      <tr>
-                        <th class="db-grid-actions"></th>
-                        <th v-for="column in db.table.columns" :key="column.name">
-                          {{ column.name }}<small>{{ column.type }}</small>
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr v-for="(row, index) in db.table.rows" :key="index">
-                        <td class="db-grid-actions">
-                          <button type="button" title="Edit row" aria-label="Edit row" @click="openRowEditor(row)"><Pencil :size="13" /></button>
-                          <button type="button" class="db-row-delete" title="Delete row" aria-label="Delete row" @click="deleteDatabaseRow(row)"><Trash2 :size="13" /></button>
-                        </td>
-                        <td v-for="column in db.table.columns" :key="column.name" :class="{ 'db-null': row[column.name] === null }" :title="formatCell(row[column.name])">{{ formatCell(row[column.name]) }}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-                <p v-if="!db.table.rows.length" class="db-empty">This table has no rows yet.</p>
-                <div class="db-pagination">
-                  <span>Rows {{ db.table.total_rows ? db.table.offset + 1 : 0 }}–{{ Math.min(db.table.offset + db.table.limit, db.table.total_rows) }} of {{ db.table.total_rows }}</span>
-                  <div>
-                    <button type="button" class="detail-control" :disabled="db.offset === 0" @click="databasePage(-1)"><ChevronLeft :size="13" /> Previous</button>
-                    <button type="button" class="detail-control" :disabled="db.table.offset + db.table.limit >= db.table.total_rows" @click="databasePage(1)">Next <ChevronRight :size="13" /></button>
-                  </div>
-                </div>
-              </div>
-
-              <div v-else class="db-structure">
-                <div v-for="column in db.table.columns" :key="column.name" class="db-column">
-                  <div class="db-column-name">
-                    <strong>{{ column.name }}</strong>
-                    <span v-if="column.primary_key" class="db-badge pk">PK</span>
-                    <span v-if="!column.nullable" class="db-badge">NOT NULL</span>
-                  </div>
-                  <div class="db-column-type">{{ column.type }}</div>
-                  <div class="db-column-default">
-                    <span>Default</span>
-                    <code>{{ column.default_value || '—' }}</code>
-                  </div>
-                </div>
-              </div>
-            </template>
-
-            <div v-else class="db-empty">
-              <Table2 :size="22" />
-              <p>Select a table to browse its rows, inspect its structure, or edit data.</p>
+            <div class="db-tabs" role="tablist">
+              <button type="button" :class="{ active: db.tab === 'data' }" @click="setDatabaseTab('data')">Data</button>
+              <button type="button" :class="{ active: db.tab === 'structure' }" :disabled="!db.table" @click="setDatabaseTab('structure')">Structure</button>
+              <button type="button" :class="{ active: db.tab === 'sql' }" @click="setDatabaseTab('sql')">SQL console</button>
             </div>
+
+            <div class="db-body">
+              <aside class="db-sidebar">
+                <div class="db-sidebar-heading"><span>Tables</span><b>{{ db.tables.length }}</b></div>
+                <p v-if="db.loading && !db.tables.length" class="db-empty">Loading tables…</p>
+                <p v-else-if="!db.tables.length" class="db-empty">No tables yet. Create your first table.</p>
+                <button
+                  v-for="table in db.tables"
+                  :key="`${table.schema}.${table.name}`"
+                  type="button"
+                  :class="['db-table-item', { active: db.selected?.schema === table.schema && db.selected?.name === table.name }]"
+                  @click="selectDatabaseTable(table)"
+                >
+                  <span class="db-table-name"><Table2 :size="13" /> {{ table.name }}</span>
+                  <span class="db-table-meta">{{ table.schema }} · ~{{ table.estimated_rows }} rows · {{ formatBytes(table.size_bytes) }}</span>
+                </button>
+              </aside>
+
+              <div class="db-main">
+                <!-- SQL console -->
+                <div v-if="db.tab === 'sql'" class="db-sql">
+                  <div class="db-sql-bar">
+                    <span>Run SQL against <strong>{{ db.database }}</strong></span>
+                    <button type="button" class="detail-control primary" :disabled="db.running" @click="runDatabaseQuery"><Play :size="13" /> {{ db.running ? 'Running…' : 'Run query' }}</button>
+                  </div>
+                  <textarea
+                    v-model="db.sql"
+                    class="db-sql-input"
+                    spellcheck="false"
+                    placeholder="SELECT * FROM public.my_table LIMIT 100;"
+                    @keydown.ctrl.enter.prevent="runDatabaseQuery"
+                    @keydown.meta.enter.prevent="runDatabaseQuery"
+                  ></textarea>
+                  <p class="db-sql-hint">Ctrl + Enter runs the statement. Results are capped at 500 rows.</p>
+                  <div v-if="db.result" class="db-sql-result">
+                    <div class="db-sql-meta">
+                      <span>{{ db.result.command || 'Result' }}</span>
+                      <span>{{ db.result.row_count }} row{{ db.result.row_count === 1 ? '' : 's' }}{{ db.result.truncated ? ' (truncated)' : '' }} · {{ db.result.duration_ms }} ms</span>
+                    </div>
+                    <div v-if="db.result.columns.length" class="db-grid-scroll">
+                      <table class="db-grid">
+                        <thead><tr><th v-for="column in db.result.columns" :key="column">{{ column }}</th></tr></thead>
+                        <tbody>
+                          <tr v-for="(row, index) in db.result.rows" :key="index">
+                            <td v-for="(cell, cellIndex) in row" :key="cellIndex" :class="{ 'db-null': cell === null }">{{ formatCell(cell) }}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                    <p v-else class="db-empty">{{ db.result.command || 'Statement executed.' }}</p>
+                  </div>
+                </div>
+
+                <!-- Table data / structure -->
+                <template v-else-if="db.table">
+                  <div class="db-table-header">
+                    <div>
+                      <h3>{{ db.table.schema }}.{{ db.table.table }}</h3>
+                      <p>{{ db.table.total_rows }} row{{ db.table.total_rows === 1 ? '' : 's' }} · {{ db.table.columns.length }} column{{ db.table.columns.length === 1 ? '' : 's' }}</p>
+                    </div>
+                    <div class="db-table-actions">
+                      <button type="button" class="detail-control db-icon-button" title="Add row" aria-label="Add row" @click="openRowEditor()"><Plus :size="15" /></button>
+                      <button type="button" class="detail-control db-icon-button" title="Truncate table" aria-label="Truncate table" @click="truncateDatabaseTable"><Eraser :size="15" /></button>
+                      <button type="button" class="detail-control danger db-icon-button" title="Drop table" aria-label="Drop table" @click="dropDatabaseTable"><Trash2 :size="15" /></button>
+                    </div>
+                  </div>
+
+                  <div v-if="db.tab === 'data'" class="db-data">
+                    <div class="db-grid-scroll">
+                      <table class="db-grid db-grid-editable">
+                        <thead>
+                          <tr>
+                            <th class="db-grid-actions"></th>
+                            <th v-for="column in db.table.columns" :key="column.name">
+                              {{ column.name }}<small>{{ column.type }}</small>
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr v-for="(row, index) in db.table.rows" :key="index">
+                            <td class="db-grid-actions">
+                              <button type="button" title="Edit row" aria-label="Edit row" @click="openRowEditor(row)"><Pencil :size="13" /></button>
+                              <button type="button" class="db-row-delete" title="Delete row" aria-label="Delete row" @click="deleteDatabaseRow(row)"><Trash2 :size="13" /></button>
+                            </td>
+                            <td v-for="column in db.table.columns" :key="column.name" :class="{ 'db-null': row[column.name] === null }" :title="formatCell(row[column.name])">{{ formatCell(row[column.name]) }}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                    <p v-if="!db.table.rows.length" class="db-empty">This table has no rows yet.</p>
+                    <div class="db-pagination">
+                      <span>Rows {{ db.table.total_rows ? db.table.offset + 1 : 0 }}–{{ Math.min(db.table.offset + db.table.limit, db.table.total_rows) }} of {{ db.table.total_rows }}</span>
+                      <div>
+                        <button type="button" class="detail-control" :disabled="db.offset === 0" @click="databasePage(-1)"><ChevronLeft :size="13" /> Previous</button>
+                        <button type="button" class="detail-control" :disabled="db.table.offset + db.table.limit >= db.table.total_rows" @click="databasePage(1)">Next <ChevronRight :size="13" /></button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div v-else class="db-structure">
+                    <div v-for="column in db.table.columns" :key="column.name" class="db-column">
+                      <div class="db-column-name">
+                        <strong>{{ column.name }}</strong>
+                        <span v-if="column.primary_key" class="db-badge pk">PK</span>
+                        <span v-if="!column.nullable" class="db-badge">NOT NULL</span>
+                      </div>
+                      <div class="db-column-type">{{ column.type }}</div>
+                      <div class="db-column-default">
+                        <span>Default</span>
+                        <code>{{ column.default_value || '—' }}</code>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+
+                <div v-else class="db-empty">
+                  <Table2 :size="22" />
+                  <p>Select a table to browse its rows, inspect its structure, or edit data.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="detailPanel === 'shell'" class="dock-panel terminal-panel">
+          <div class="terminal-bar">
+            <span class="terminal-lights"><i></i><i></i><i></i></span>
+            <span>{{ terminalTitle }}</span>
+            <span class="terminal-state">{{ terminalStatus }}<button v-if="selectedServer.status === 'running' && terminalStatus !== 'Connected'" type="button" class="terminal-reconnect" @click="reconnectTerminal">Reconnect</button></span>
+          </div>
+          <div ref="terminalHost" class="real-terminal-body" aria-label="Interactive container terminal"></div>
+        </div>
+
+        <div v-else-if="detailPanel === 'logs'" class="dock-panel logs-panel">
+          <div class="logs-card">
+            <div class="logs-header">
+              <h3>Live logs</h3>
+              <span :class="['logs-status', logsStatus === 'Connected' ? 'connected' : 'connecting']">{{ logsStatus }}</span>
+            </div>
+            <pre ref="logsHost" class="logs-content" aria-label="Container logs" @scroll="trackLogsScroll">{{ logs || 'Waiting for container output...' }}</pre>
+          </div>
+        </div>
+
+        <div v-else-if="detailPanel === 'details'" class="dock-panel details-panel">
+          <div class="container-details-card">
+            <h3>Container</h3>
+            <dl class="container-details">
+              <div><dt>Template</dt><dd>{{ selectedServer.template_name }} ({{ selectedServer.template_cpu_limit }} CPU / {{ selectedServer.template_memory_mb }} MB)</dd></div>
+              <div v-if="selectedServer.effective_memory_mb > selectedServer.template_memory_mb"><dt>Memory limit</dt><dd>{{ selectedServer.effective_memory_mb }} MB (XAMPP minimum)</dd></div>
+              <div><dt>Host port</dt><dd>{{ selectedServer.host_port || 'Not assigned' }}</dd></div>
+              <div v-if="selectedServer.image === 'postgres'"><dt>Storage limit</dt><dd>{{ selectedServer.database_size_display || 'No limit' }}</dd></div>
+              <div><dt>Container ID</dt><dd><code>{{ selectedServer.container_id || 'Not created' }}</code></dd></div>
+              <div><dt>Created</dt><dd>{{ formatDate(selectedServer.created_at) }}</dd></div>
+            </dl>
+          </div>
+          <div class="incidents-card">
+            <h3>Incidents <span class="subtitle">Most recent first</span></h3>
+            <div v-if="selectedServer.incidents && selectedServer.incidents.length" class="incidents-list">
+              <div v-for="incident in selectedServer.incidents" :key="incident.id" class="incident-item">
+                <div class="incident-info">
+                  <strong>{{ incident.type_display }}</strong>
+                  <div class="incident-time">Opened {{ formatDateTime(incident.opened_at) }}</div>
+                </div>
+                <span :class="['incident-badge', incident.status]">{{ incident.status_display }}</span>
+              </div>
+            </div>
+            <p v-else class="empty-state">No incidents recorded for this server.</p>
           </div>
         </div>
       </div>
 
-      <!-- Incidents -->
-      <div class="incidents-card">
-        <h3>Incidents <span class="subtitle">Most recent first</span></h3>
-        <div v-if="selectedServer.incidents && selectedServer.incidents.length" class="incidents-list">
-          <div v-for="incident in selectedServer.incidents" :key="incident.id" class="incident-item">
-            <div class="incident-info">
-              <strong>{{ incident.type_display }}</strong>
-              <div class="incident-time">Opened {{ formatDateTime(incident.opened_at) }}</div>
-            </div>
-            <span :class="['incident-badge', incident.status]">{{ incident.status_display }}</span>
-          </div>
-        </div>
-        <p v-else class="empty-state">No incidents recorded for this server.</p>
-      </div>
-
-      <!-- Live logs -->
-      <div class="logs-card">
-        <div class="logs-header">
-          <h3>Live logs</h3>
-          <span :class="['logs-status', logsStatus === 'Connected' ? 'connected' : 'connecting']">{{ logsStatus }}</span>
-        </div>
-        <pre class="logs-content" aria-label="Container logs">{{ logs || 'Waiting for container output...' }}</pre>
-      </div>
-
-      <!-- Interactive terminal -->
-      <div class="real-terminal"><div class="terminal-bar"><span class="terminal-lights"><i></i><i></i><i></i></span><span>{{ terminalTitle }}</span><span class="terminal-state">{{ terminalStatus }}<button v-if="selectedServer.status === 'running' && terminalStatus !== 'Connected'" type="button" class="terminal-reconnect" @click="reconnectTerminal">Reconnect</button></span></div><div ref="terminalHost" class="real-terminal-body" aria-label="Interactive container terminal"></div></div>
     </section>
 
     <!-- Database row editor -->
