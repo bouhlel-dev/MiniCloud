@@ -68,29 +68,35 @@ def record_metric_snapshot(server, stats, timestamp=None):
 def evaluate_resource_incidents(server, snapshot):
     cpu_threshold = Decimal(str(settings.MINICLOUD_HIGH_CPU_PERCENT))
     memory_threshold = Decimal(str(settings.MINICLOUD_HIGH_MEMORY_PERCENT))
-    cpu_sustained = _is_sustained_threshold(server, "cpu_percent", cpu_threshold)
-    memory_percent = (snapshot.memory_mb / Decimal(server.template.memory_mb)) * 100
-    memory_sustained = _is_sustained_memory_threshold(server, memory_threshold)
+    cpu_share = _cpu_share(server, snapshot.cpu_percent)
+    memory_share = _memory_share(server, snapshot.memory_mb)
 
-    if cpu_sustained:
+    if _is_sustained_breach(server, "cpu_percent", cpu_threshold, lambda value: _cpu_share(server, value)):
         open_incident(server, Incident.Type.HIGH_CPU)
-    elif snapshot.cpu_percent <= cpu_threshold:
+    elif cpu_share <= cpu_threshold:
         resolve_incident(server, Incident.Type.HIGH_CPU)
 
-    if memory_sustained:
+    if _is_sustained_breach(server, "memory_mb", memory_threshold, lambda value: _memory_share(server, value)):
         open_incident(server, Incident.Type.HIGH_MEMORY)
-    elif memory_percent <= memory_threshold:
+    elif memory_share <= memory_threshold:
         resolve_incident(server, Incident.Type.HIGH_MEMORY)
 
 
 def record_healthy_check(server, container_status):
     health_check, _ = HealthCheck.objects.get_or_create(server=server)
     health_check.auto_restart_attempts = 0
+    health_check.consecutive_failures = 0
     health_check.last_checked_at = timezone.now()
     health_check.last_container_status = container_status
     health_check.last_error = ""
     health_check.save(
-        update_fields=["auto_restart_attempts", "last_checked_at", "last_container_status", "last_error"]
+        update_fields=[
+            "auto_restart_attempts",
+            "consecutive_failures",
+            "last_checked_at",
+            "last_container_status",
+            "last_error",
+        ]
     )
     if server.status == Server.Status.FAILED:
         server.transition_to(Server.Status.RUNNING)
@@ -98,24 +104,38 @@ def record_healthy_check(server, container_status):
 
 
 def handle_unhealthy_server(server, container_status, docker_service, error_message=""):
+    down_failures = settings.MINICLOUD_HEALTH_DOWN_FAILURES
     health_check, _ = HealthCheck.objects.get_or_create(server=server)
     now = timezone.now()
-    open_incident(server, Incident.Type.DOWN)
+    # Capped so a week-long outage cannot overflow the smallint and break the task for every server.
+    health_check.consecutive_failures = min(health_check.consecutive_failures + 1, down_failures)
     health_check.last_checked_at = now
     health_check.last_container_status = container_status
 
+    # One failed poll is usually Docker being busy or a container mid-start; only a streak is an outage.
+    if health_check.consecutive_failures < down_failures:
+        health_check.save(update_fields=["consecutive_failures", "last_checked_at", "last_container_status"])
+        return
+
     if isinstance(error_message, DockerContainerNotFound):
         health_check.last_error = str(error_message)
-        health_check.save(update_fields=["last_checked_at", "last_container_status", "last_error"])
+        health_check.save(
+            update_fields=["consecutive_failures", "last_checked_at", "last_container_status", "last_error"]
+        )
+        open_incident(server, Incident.Type.DOWN)
         _mark_server_failed(server)
         return
 
     if health_check.auto_restart_attempts >= settings.MINICLOUD_HEALTH_MAX_RESTART_ATTEMPTS:
         health_check.last_error = "The automatic restart limit has been reached."
-        health_check.save(update_fields=["last_checked_at", "last_container_status", "last_error"])
+        health_check.save(
+            update_fields=["consecutive_failures", "last_checked_at", "last_container_status", "last_error"]
+        )
+        open_incident(server, Incident.Type.DOWN)
         _mark_server_failed(server)
         return
 
+    open_incident(server, Incident.Type.DOWN)
     health_check.auto_restart_attempts += 1
     try:
         docker_service.start_container(server.container_id)
@@ -129,6 +149,7 @@ def handle_unhealthy_server(server, container_status, docker_service, error_mess
     health_check.save(
         update_fields=[
             "auto_restart_attempts",
+            "consecutive_failures",
             "last_checked_at",
             "last_container_status",
             "last_error",
@@ -203,31 +224,27 @@ def prune_expired_metric_snapshots():
     return deleted
 
 
-def _is_sustained_threshold(server, field_name, threshold):
+def _cpu_share(server, cpu_percent):
+    """Docker reports cpu_percent against one host core; alerts need the container's own quota."""
+    quota = Decimal(server.effective_cpu_limit)
+    if quota <= 0:
+        return Decimal(cpu_percent)
+    # cpu_percent is already a percentage, so dividing by the core quota yields percent-of-quota.
+    return Decimal(cpu_percent) / quota
+
+
+def _memory_share(server, memory_mb):
+    return (Decimal(memory_mb) / Decimal(server.effective_memory_mb)) * 100
+
+
+def _is_sustained_breach(server, field_name, threshold, share_of):
     window_seconds = 60
     now = timezone.now()
     cutoff = now - timedelta(seconds=window_seconds + settings.MINICLOUD_METRIC_INTERVAL_SECONDS)
-    samples = list(
-        MetricSnapshot.objects.filter(server=server, timestamp__gte=cutoff)
-        .order_by("timestamp")
-        .values_list("timestamp", field_name)
-    )
-    return _has_sustained_breach(samples, lambda value: value > threshold, now)
-
-
-def _is_sustained_memory_threshold(server, threshold):
-    window_seconds = 60
-    now = timezone.now()
-    cutoff = now - timedelta(seconds=window_seconds + settings.MINICLOUD_METRIC_INTERVAL_SECONDS)
-    memory_limit = Decimal(server.template.memory_mb)
     samples = MetricSnapshot.objects.filter(server=server, timestamp__gte=cutoff).order_by("timestamp").values_list(
-        "timestamp", "memory_mb"
+        "timestamp", field_name
     )
-    return _has_sustained_breach(
-        samples,
-        lambda value: (value / memory_limit) * 100 > threshold,
-        now,
-    )
+    return _has_sustained_breach(samples, lambda value: share_of(value) > threshold, now)
 
 
 def _has_sustained_breach(samples, is_above_threshold, now):

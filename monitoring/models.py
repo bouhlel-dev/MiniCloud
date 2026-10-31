@@ -32,6 +32,7 @@ class MetricSnapshot(models.Model):
 class HealthCheck(models.Model):
     server = models.OneToOneField(Server, on_delete=models.CASCADE, related_name="health_check")
     auto_restart_attempts = models.PositiveSmallIntegerField(default=0)
+    consecutive_failures = models.PositiveSmallIntegerField(default=0)
     last_checked_at = models.DateTimeField(blank=True, null=True)
     last_container_status = models.CharField(max_length=50, blank=True)
     last_error = models.TextField(blank=True)

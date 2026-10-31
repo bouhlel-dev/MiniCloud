@@ -278,6 +278,128 @@ def test_health_check_ignores_a_deliberately_stopped_server(db, user, server, se
     docker.get_container_status.assert_not_called()
 
 
+def test_memory_incidents_measure_against_the_effective_container_limit(db, user, server_template, settings):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from monitoring.models import Incident, MetricSnapshot
+    from monitoring.services import record_metric_snapshot
+
+    settings.MINICLOUD_XAMPP_MIN_MEMORY_MB = 1024
+    settings.CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
+    settings.EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+
+    # The Small template offers 256 MB, but PHP/XAMPP is provisioned with a 1 GB floor.
+    lamp = Server.objects.create(
+        owner=user, name="lamp", image=Server.Image.PHP, template=server_template, container_id="lamp-container"
+    )
+    lamp.transition_to(Server.Status.RUNNING)
+    now = timezone.now()
+
+    def stats(memory_mb):
+        return {"cpu_percent": 1, "memory_mb": memory_mb, "net_rx": 0, "net_tx": 0}
+
+    for index in range(8):
+        record_metric_snapshot(lamp, stats(240), timestamp=now - timedelta(seconds=70 - index * 10))
+
+    assert not Incident.objects.filter(server=lamp, type=Incident.Type.HIGH_MEMORY).exists()
+
+    MetricSnapshot.objects.filter(server=lamp).delete()
+    for index in range(8):
+        record_metric_snapshot(lamp, stats(960), timestamp=now - timedelta(seconds=70 - index * 10))
+
+    assert Incident.objects.filter(
+        server=lamp, type=Incident.Type.HIGH_MEMORY, status=Incident.Status.OPEN
+    ).exists()
+
+
+def test_down_incident_waits_for_a_streak_of_failed_health_checks(db, user, server, settings):
+    from monitoring.models import HealthCheck, Incident
+    from monitoring.tasks import check_server_health
+
+    settings.MINICLOUD_HEALTH_DOWN_FAILURES = 3
+    settings.CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
+    settings.EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+
+    docker = Mock()
+    docker.get_container_status.return_value = "exited"
+    with patch("monitoring.tasks.DockerService", return_value=docker):
+        for _ in range(2):
+            assert check_server_health() == {"healthy": 0, "unhealthy": 1}
+
+    assert not Incident.objects.filter(server=server, type=Incident.Type.DOWN).exists()
+    assert HealthCheck.objects.get(server=server).consecutive_failures == 2
+    docker.start_container.assert_not_called()
+
+    with patch("monitoring.tasks.DockerService", return_value=docker):
+        check_server_health()
+
+    assert Incident.objects.filter(
+        server=server, type=Incident.Type.DOWN, status=Incident.Status.OPEN
+    ).exists()
+    docker.start_container.assert_called_once_with("container-id")
+
+
+def test_healthy_check_clears_the_failure_streak(db, user, server, settings):
+    from monitoring.models import HealthCheck, Incident
+    from monitoring.tasks import check_server_health
+
+    settings.MINICLOUD_HEALTH_DOWN_FAILURES = 3
+    settings.CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
+    settings.EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+
+    failing = Mock()
+    failing.get_container_status.return_value = "exited"
+    healthy = Mock()
+    healthy.get_container_status.return_value = "running"
+
+    with patch("monitoring.tasks.DockerService", return_value=failing):
+        for _ in range(2):
+            check_server_health()
+    with patch("monitoring.tasks.DockerService", return_value=healthy):
+        check_server_health()
+    assert HealthCheck.objects.get(server=server).consecutive_failures == 0
+
+    with patch("monitoring.tasks.DockerService", return_value=failing):
+        for _ in range(2):
+            check_server_health()
+
+    assert not Incident.objects.filter(server=server, type=Incident.Type.DOWN).exists()
+    assert HealthCheck.objects.get(server=server).consecutive_failures == 2
+
+
+def test_cpu_incidents_measure_against_the_container_quota(db, user, server, settings):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from monitoring.models import Incident, MetricSnapshot
+    from monitoring.services import record_metric_snapshot
+
+    settings.CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
+    settings.EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+
+    # The template owns half a core, so 50% of a core is 100% of the container's quota.
+    now = timezone.now()
+
+    def stats(cpu_percent):
+        return {"cpu_percent": cpu_percent, "memory_mb": 10, "net_rx": 0, "net_tx": 0}
+
+    for index in range(8):
+        record_metric_snapshot(server, stats(40), timestamp=now - timedelta(seconds=70 - index * 10))
+
+    assert not Incident.objects.filter(server=server, type=Incident.Type.HIGH_CPU).exists()
+
+    MetricSnapshot.objects.filter(server=server).delete()
+    for index in range(8):
+        record_metric_snapshot(server, stats(50), timestamp=now - timedelta(seconds=70 - index * 10))
+
+    assert Incident.objects.filter(
+        server=server, type=Incident.Type.HIGH_CPU, status=Incident.Status.OPEN
+    ).exists()
+
+
 def test_models_have_no_unmigrated_changes(db):
     """Catches a model change that was never turned into a migration file."""
     from django.apps import apps
