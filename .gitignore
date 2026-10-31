@@ -8,6 +8,6 @@ __pycache__/
 .coverage
 htmlcov/
 staticfiles/
-celerybeat-schedule
+celerybeat-schedule*
 .DS_Store
 
