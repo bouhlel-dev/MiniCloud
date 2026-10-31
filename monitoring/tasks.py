@@ -1,8 +1,10 @@
 from celery import shared_task
+from django.db.models import Q
 
 from servers.docker_service import DockerContainerNotFound, DockerService, DockerServiceError
 from servers.models import Server
 
+from .models import Incident
 from .services import (
     handle_unhealthy_server,
     prune_expired_metric_snapshots,
@@ -33,7 +35,15 @@ def check_server_health():
     docker_service = DockerService()
     healthy = 0
     unhealthy = 0
-    servers = Server.objects.filter(status=Server.Status.RUNNING).select_related("owner")
+    # A subquery instead of incidents__…: an OR across a multi-valued relation repeats each server once per incident row.
+    servers_with_open_outage = Incident.objects.filter(
+        type=Incident.Type.DOWN,
+        status=Incident.Status.OPEN,
+    ).values("server_id")
+    servers = Server.objects.filter(
+        Q(status=Server.Status.RUNNING)
+        | Q(status=Server.Status.FAILED, pk__in=servers_with_open_outage)
+    ).select_related("owner")
     for server in servers.iterator():
         try:
             container_status = docker_service.get_container_status(server.container_id)

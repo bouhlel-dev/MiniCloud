@@ -3,7 +3,8 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from monitoring.models import MetricSnapshot
+from monitoring.models import Incident, MetricSnapshot, Notification
+from monitoring.tasks import check_server_health
 from servers import database_admin
 from servers.database_admin import DatabaseAdminError
 from servers.docker_service import DockerService, DockerServiceError
@@ -21,7 +22,12 @@ from servers.services import (
     stop_server,
 )
 
-from .serializers import MetricSnapshotSerializer, ServerSerializer, ServerTemplateSerializer
+from .serializers import (
+    MetricSnapshotSerializer,
+    NotificationSerializer,
+    ServerSerializer,
+    ServerTemplateSerializer,
+)
 
 
 class ServerViewSet(viewsets.ModelViewSet):
@@ -250,6 +256,35 @@ class ServerViewSet(viewsets.ModelViewSet):
         except DatabaseAdminError as error:
             return self._database_error(error)
 
+    @action(detail=False, methods=["post"])
+    def run_health_check(self, request):
+        result = check_server_health()
+        return Response(result)
+
+    @action(detail=True, methods=["post"])
+    def trigger_incident(self, request, pk=None):
+        server = self.get_object()
+        incident_type = request.data.get("type")
+        if incident_type not in Incident.Type.values:
+            return Response({"detail": "Invalid incident type."}, status=status.HTTP_400_BAD_REQUEST)
+
+        from monitoring.services import create_notification, open_incident
+
+        incident, created = open_incident(server, incident_type)
+        if not created:
+            create_notification(
+                server.owner,
+                (
+                    f"{server.name} already has an open {incident.get_type_display().lower()} incident, "
+                    "so no duplicate was raised. Resolve it from the server page or wait for the health check."
+                ),
+                level="warning",
+                server=server,
+                kind=Notification.Kind.INCIDENT_OPENED,
+                title=f"{incident.get_type_display()} still active",
+            )
+        return Response({"detail": f"Artificial incident '{incident_type}' triggered."})
+
     @staticmethod
     def _database_error(error):
         message = str(error)
@@ -268,3 +303,23 @@ class ServerViewSet(viewsets.ModelViewSet):
 class ServerTemplateViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ServerTemplateSerializer
     queryset = ServerTemplate.objects.all()
+
+
+class NotificationViewSet(viewsets.ModelViewSet):
+    serializer_class = NotificationSerializer
+
+    def get_queryset(self):
+        return Notification.objects.filter(user=self.request.user).select_related("server")
+
+    @action(detail=True, methods=["post"])
+    def mark_read(self, request, pk=None):
+        notification = self.get_object()
+        if not notification.is_read:
+            notification.is_read = True
+            notification.save(update_fields=["is_read"])
+        return Response(self.get_serializer(notification).data)
+
+    @action(detail=False, methods=["post"])
+    def mark_all_read(self, request):
+        Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
+        return Response({"detail": "All notifications marked as read."})

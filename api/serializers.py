@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from monitoring.models import Incident, MetricSnapshot
+from monitoring.models import Incident, MetricSnapshot, Notification
 from servers.models import Server, ServerTemplate
 from servers.services import postgres_connection_string
 
@@ -121,3 +121,31 @@ class ServerTemplateSerializer(serializers.ModelSerializer):
     class Meta:
         model = ServerTemplate
         fields = ("id", "name", "cpu_limit", "memory_mb", "description")
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    kind_display = serializers.CharField(source="get_kind_display", read_only=True)
+    server_name = serializers.SerializerMethodField()
+    server_status = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Notification
+        fields = (
+            "id",
+            "kind",
+            "kind_display",
+            "title",
+            "message",
+            "level",
+            "created_at",
+            "is_read",
+            "server",
+            "server_name",
+            "server_status",
+        )
+
+    def get_server_name(self, obj):
+        return obj.server.name if obj.server else None
+
+    def get_server_status(self, obj):
+        return obj.server.status if obj.server else None

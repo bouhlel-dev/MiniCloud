@@ -3,6 +3,8 @@ from datetime import timedelta
 from decimal import Decimal
 from math import ceil
 
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from django.conf import settings
 from django.core.mail import send_mail
 from django.db import IntegrityError, transaction
@@ -11,10 +13,43 @@ from django.utils import timezone
 from servers.docker_service import DockerContainerNotFound, DockerServiceError
 from servers.models import Server
 
-from .models import HealthCheck, Incident, MetricSnapshot
+from .models import HealthCheck, Incident, MetricSnapshot, Notification
 
 
 logger = logging.getLogger(__name__)
+
+
+def create_notification(user, message, level="info", *, server=None, kind=Notification.Kind.SYSTEM, title=""):
+    notification = Notification.objects.create(
+        user=user,
+        server=server,
+        kind=kind,
+        title=title,
+        message=message,
+        level=level,
+    )
+    channel_layer = get_channel_layer()
+    if channel_layer:
+        async_to_sync(channel_layer.group_send)(
+            f"user_{user.id}_notifications",
+            {
+                "type": "notification_message",
+                "data": {
+                    "id": notification.id,
+                    "kind": notification.kind,
+                    "kind_display": notification.get_kind_display(),
+                    "title": notification.title,
+                    "message": notification.message,
+                    "level": notification.level,
+                    "created_at": notification.created_at.isoformat(),
+                    "is_read": notification.is_read,
+                    "server": notification.server_id,
+                    "server_name": notification.server.name if notification.server else None,
+                    "server_status": notification.server.status if notification.server else None,
+                },
+            },
+        )
+    return notification
 
 
 def record_metric_snapshot(server, stats, timestamp=None):
@@ -57,6 +92,8 @@ def record_healthy_check(server, container_status):
     health_check.save(
         update_fields=["auto_restart_attempts", "last_checked_at", "last_container_status", "last_error"]
     )
+    if server.status == Server.Status.FAILED:
+        server.transition_to(Server.Status.RUNNING)
     resolve_incident(server, Incident.Type.DOWN)
 
 
@@ -112,15 +149,52 @@ def open_incident(server, incident_type):
         created = False
     if created:
         _send_incident_alert(server, incident)
+        display = incident.get_type_display()
+        if incident_type == Incident.Type.DOWN:
+            detail = (
+                f"Container {server.name} is unreachable. The health check closes this automatically "
+                "once the container reports healthy again."
+            )
+            level = "error"
+        else:
+            detail = (
+                f"{server.name} has been over the {display.lower()} threshold for a sustained period. "
+                "The incident stays open until metrics drop back under the limit."
+            )
+            level = "warning"
+        create_notification(
+            server.owner,
+            detail,
+            level=level,
+            server=server,
+            kind=Notification.Kind.INCIDENT_OPENED,
+            title=display,
+        )
     return incident, created
 
 
 def resolve_incident(server, incident_type):
-    return Incident.objects.filter(
+    incidents = Incident.objects.filter(
         server=server,
         type=incident_type,
         status=Incident.Status.OPEN,
-    ).update(status=Incident.Status.RESOLVED, resolved_at=timezone.now())
+    )
+    for incident in incidents:
+        if incident.resolve():
+            display = incident.get_type_display()
+            if incident.type == Incident.Type.DOWN:
+                detail = f"{server.name} is running again and the {display.lower()} incident was closed."
+            else:
+                detail = f"{server.name} is back within limits and the {display.lower()} incident was closed."
+            create_notification(
+                server.owner,
+                detail,
+                level="success",
+                server=server,
+                kind=Notification.Kind.INCIDENT_RESOLVED,
+                title=f"{display} resolved",
+            )
+    return incidents.count()
 
 
 def prune_expired_metric_snapshots():

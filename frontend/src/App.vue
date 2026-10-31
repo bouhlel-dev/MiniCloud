@@ -1,11 +1,11 @@
-﻿<script setup>
+<script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import {
   ArrowLeft, ArrowUpRight, Box, Check, ChevronLeft, ChevronRight, CircleDot, Copy, Cpu, Database, Eraser, Info, LayoutDashboard, Network,
-  LogOut, Pencil, Play, Plus, RefreshCw, RotateCw, ScrollText, Server, SquareTerminal, Table2, Trash2, X,
+  LogOut, Pencil, Play, Plus, RefreshCw, RotateCw, ScrollText, Server, SquareTerminal, Table2, Trash2, X, Bell, ShieldAlert, MemoryStick,
 } from '@lucide/vue'
 
 const apiBase = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000/api'
@@ -14,6 +14,15 @@ const username = ref(localStorage.getItem('minicloud_user') || '')
 const loginForm = ref({ username: '', password: '' })
 const servers = ref([])
 const templates = ref([])
+const notifications = ref([])
+const toasts = ref([])
+const activeTab = ref('overview')
+
+watch(activeTab, (newTab) => {
+  if (newTab === 'notifications') {
+    loadNotifications()
+  }
+})
 const selectedServer = ref(null)
 const showDetail = ref(false)
 const metrics = ref([])
@@ -34,6 +43,7 @@ const createForm = ref({ name: '', image: 'nginx', framework: '', database_size_
 let terminal = null
 let terminalSocket = null
 let logsSocket = null
+let notificationSocket = null
 let provisioningPollTimer = null
 let terminalResizeObserver = null
 let terminalOutputBuffer = ''
@@ -60,6 +70,11 @@ const databaseState = () => ({
 const db = ref(databaseState())
 const rowEditor = ref({ open: false, mode: 'insert', fields: {}, key: null, error: '', saving: false })
 const tableCreator = ref({ open: false, schema: 'public', name: '', columns: [], error: '', saving: false })
+const showIncidentModal = ref(false)
+const incidentForm = ref({ type: 'down' })
+const incidentSubmitting = ref(false)
+const incidentError = ref('')
+const incidentDialog = ref(null)
 const detailPanel = ref('')
 const copiedField = ref('')
 const dbColumnTypes = [
@@ -69,6 +84,35 @@ const dbColumnTypes = [
 ]
 
 const editableColumns = computed(() => (db.value.table?.columns || []).filter(column => !column.identity && !column.generated))
+
+const incidentOptions = [
+  {
+    value: 'down',
+    label: 'Server down',
+    icon: ShieldAlert,
+    tone: 'error',
+    detail: 'Opens a DOWN incident even while the container keeps running. The next health check finds it healthy again and resolves it automatically.',
+  },
+  {
+    value: 'high_cpu',
+    label: 'High CPU',
+    icon: Cpu,
+    tone: 'warning',
+    detail: 'Opens a HIGH CPU incident. It stays open until metrics report usage back under the configured threshold.',
+  },
+  {
+    value: 'high_memory',
+    label: 'High memory',
+    icon: MemoryStick,
+    tone: 'warning',
+    detail: 'Opens a HIGH MEMORY incident measured against this server’s resource template.',
+  },
+]
+
+const openIncidentTypes = computed(() => new Set(
+  (selectedServer.value?.incidents || []).filter(incident => incident.status === 'open').map(incident => incident.type),
+))
+const selectedIncidentOption = computed(() => incidentOptions.find(option => option.value === incidentForm.value.type) || incidentOptions[0])
 
 function resetDatabase() {
   db.value = databaseState()
@@ -100,13 +144,15 @@ function isJsonColumn(column) {
 }
 
 function databaseUrl(path, params = {}) {
+  const server = selectedServer.value
+  if (!server) throw new Error('No server selected.')
   const search = new URLSearchParams()
   if (db.value.database) search.set('database', db.value.database)
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== null && value !== '') search.set(key, String(value))
   }
   const query = search.toString()
-  return `/servers/${selectedServer.value.id}/database${path}${query ? `?${query}` : ''}`
+  return `/servers/${server.id}/database${path}${query ? `?${query}` : ''}`
 }
 
 async function loadDatabase(databaseName) {
@@ -256,7 +302,7 @@ async function deleteDatabaseRow(row) {
       method: 'POST',
       body: JSON.stringify({ key: rowKey(row), database: db.value.database || null }),
     })
-    const nextOffset = db.value.table.rows.length === 1 && db.value.offset > 0 ? db.value.offset - db.value.limit : db.value.offset
+    const nextOffset = (db.value.table?.rows.length || 0) === 1 && db.value.offset > 0 ? db.value.offset - db.value.limit : db.value.offset
     await loadDatabaseTable(table.schema, table.table, nextOffset)
     await loadDatabase()
   } catch (err) {
@@ -349,6 +395,58 @@ function formatDateTime(dateString) {
   if (!dateString) return '—'
   const date = new Date(dateString)
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+const notificationFilter = ref('all')
+const unreadNotifications = computed(() => notifications.value.filter(note => !note.is_read))
+const visibleNotifications = computed(() => (
+  notificationFilter.value === 'unread' ? unreadNotifications.value : notifications.value
+))
+
+function relativeTime(dateString) {
+  const seconds = Math.round((Date.now() - new Date(dateString).getTime()) / 1000)
+  if (seconds < 45) return 'just now'
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 60) return `${minutes} min ago`
+  const hours = Math.round(minutes / 60)
+  if (hours < 24) return `${hours} h ago`
+  const days = Math.round(hours / 24)
+  return days === 1 ? 'yesterday' : `${days} days ago`
+}
+
+function notificationDayLabel(dateString) {
+  const date = new Date(dateString)
+  const today = new Date()
+  if (date.toDateString() === today.toDateString()) return 'Today'
+  if (date.toDateString() === new Date(today.getTime() - 86400000).toDateString()) return 'Yesterday'
+  return formatDate(dateString)
+}
+
+const groupedNotifications = computed(() => {
+  const groups = []
+  for (const note of visibleNotifications.value) {
+    const label = notificationDayLabel(note.created_at)
+    const current = groups[groups.length - 1]
+    if (current && current.label === label) current.items.push(note)
+    else groups.push({ label, items: [note] })
+  }
+  return groups
+})
+
+async function markNotificationRead(note) {
+  if (note.is_read) return
+  note.is_read = true
+  try {
+    await api(`/notifications/${note.id}/mark_read/`, { method: 'POST' })
+  } catch {
+    note.is_read = false
+  }
+}
+
+function openNotificationServer(note) {
+  if (!note.server) return
+  activeTab.value = 'overview'
+  selectServer(note.server)
 }
 const terminalTitle = computed(() => {
   if (!selectedServer.value) return ''
@@ -510,9 +608,11 @@ async function loadDashboard() {
   try {
     if (!templates.value.length) templates.value = await api('/templates/')
     servers.value = await api('/servers/')
+    await loadNotifications()
     if (!createForm.value.template) createForm.value.template = templates.value[0]?.id || ''
-    if (selectedServer.value) {
-      const updated = servers.value.find(server => server.id === selectedServer.value.id)
+    const current = selectedServer.value
+    if (current) {
+      const updated = servers.value.find(server => server.id === current.id)
       if (updated) selectedServer.value = updated
     }
     if (servers.value.some(server => server.status === 'creating')) startProvisioningPoll()
@@ -520,6 +620,15 @@ async function loadDashboard() {
     error.value = err.message
     if (err.message.includes('401')) logout()
   } finally { loading.value = false }
+}
+
+async function loadNotifications() {
+  if (!token.value) return
+  try {
+    notifications.value = await api('/notifications/')
+  } catch (err) {
+    console.error('Failed to load notifications:', err)
+  }
 }
 
 async function selectServer(id) {
@@ -530,6 +639,7 @@ async function selectServer(id) {
   showDetail.value = true
   metrics.value = await api(`/servers/${id}/metrics/`)
   await refreshLiveMetric()
+  if (selectedServer.value?.id !== id) return
   if (selectedServer.value.image === 'postgres' && selectedServer.value.status === 'running') {
     detailPanel.value = 'database'
     loadDatabase()
@@ -793,6 +903,63 @@ async function createServer() {
   } catch (err) { error.value = err.message }
 }
 
+function openIncidentModal() {
+  if (!selectedServer.value) return
+  const inactive = incidentOptions.find(option => !openIncidentTypes.value.has(option.value))
+  incidentForm.value = { type: (inactive || incidentOptions[0]).value }
+  incidentError.value = ''
+  incidentSubmitting.value = false
+  showIncidentModal.value = true
+  nextTick(() => incidentDialog.value?.focus())
+}
+
+function closeIncidentModal() {
+  if (incidentSubmitting.value) return
+  showIncidentModal.value = false
+  incidentError.value = ''
+}
+
+async function triggerIncident() {
+  const server = selectedServer.value
+  if (!server || incidentSubmitting.value) return
+  incidentSubmitting.value = true
+  incidentError.value = ''
+  try {
+    await api(`/servers/${server.id}/trigger_incident/`, {
+      method: 'POST',
+      body: JSON.stringify(incidentForm.value),
+    })
+    showIncidentModal.value = false
+    await loadDashboard()
+    await selectServer(server.id)
+  } catch (err) {
+    incidentError.value = err.message
+  } finally {
+    incidentSubmitting.value = false
+  }
+}
+
+async function markAllNotificationsRead() {
+  try {
+    await api('/notifications/mark_all_read/', { method: 'POST' })
+    notifications.value = notifications.value.map(n => ({ ...n, is_read: true }))
+  } catch (err) {
+    error.value = err.message
+  }
+}
+
+async function runHealthCheck() {
+  loading.value = true
+  try {
+    await api('/servers/run_health_check/', { method: 'POST' })
+    await loadDashboard()
+  } catch (err) {
+    error.value = err.message
+  } finally {
+    loading.value = false
+  }
+}
+
 function setFrameworkDefault() {
   const frameworkOptions = {
     python: ['fastapi', 'flask', 'django'],
@@ -803,12 +970,59 @@ function setFrameworkDefault() {
   if (createForm.value.image !== 'postgres') createForm.value.database_size_mb = null
 }
 
+function connectNotifications() {
+  if (!token.value || notificationSocket) return
+  const socketUrl = new URL(apiBase)
+  socketUrl.protocol = socketUrl.protocol === 'https:' ? 'wss:' : 'ws:'
+  socketUrl.pathname = '/ws/notifications/'
+  socketUrl.search = `token=${encodeURIComponent(token.value)}`
+  const socket = new WebSocket(socketUrl)
+  notificationSocket = socket
+  socket.onmessage = event => {
+    let data
+    try {
+      data = JSON.parse(event.data)
+    } catch {
+      return
+    }
+    if (!data || typeof data !== 'object' || data.id === undefined || data.id === null) return
+    // Add to persistent list
+    notifications.value.unshift(data)
+    // Add to transient toasts
+    const toastId = Date.now() + Math.random()
+    toasts.value.unshift({ ...data, id: toastId })
+    if (toasts.value.length > 5) toasts.value.pop()
+    setTimeout(() => removeToast(toastId), 10000)
+  }
+  socket.onclose = () => {
+    notificationSocket = null
+    setTimeout(connectNotifications, 5000)
+  }
+}
+
+function removeToast(id) {
+  toasts.value = toasts.value.filter(t => t.id !== id)
+}
+
+function removeNotification(id) {
+  notifications.value = notifications.value.filter(n => n.id !== id)
+}
+
 onMounted(async () => {
   await loadDashboard()
   window.setInterval(refreshLiveMetric, 5000)
+  connectNotifications()
 })
 
-onBeforeUnmount(() => { closeTerminal(); closeLogs(); stopProvisioningPoll() })
+onBeforeUnmount(() => {
+  closeTerminal()
+  closeLogs()
+  stopProvisioningPoll()
+  if (notificationSocket) {
+    notificationSocket.close()
+    notificationSocket = null
+  }
+})
 </script>
 
 <template>
@@ -830,16 +1044,111 @@ onBeforeUnmount(() => { closeTerminal(); closeLogs(); stopProvisioningPoll() })
   <main v-else class="app-shell">
     <aside class="sidebar">
       <div class="brand-mark"><span>MC</span><div>MINICLOUD <small>LOCAL INFRASTRUCTURE</small></div></div>
-      <nav><a class="active"><LayoutDashboard :size="16" /> Overview</a><a><RefreshCw :size="16" /> Activity <b>0</b></a><a><Server :size="16" /> Templates</a></nav>
+      <nav>
+        <a :class="{ active: activeTab === 'overview' }" @click="activeTab = 'overview'"><LayoutDashboard :size="16" /> Overview</a>
+        <a :class="{ active: activeTab === 'notifications' }" @click="activeTab = 'notifications'">
+          <Bell :size="16" /> Notifications
+          <b v-if="notifications.filter(n => !n.is_read).length">{{ notifications.filter(n => !n.is_read).length }}</b>
+        </a>
+        <a :class="{ active: activeTab === 'templates' }" @click="activeTab = 'templates'"><Server :size="16" /> Templates</a>
+      </nav>
       <div class="sidebar-footer"><div class="user-chip"><span>{{ username.slice(0, 1).toUpperCase() }}</span><div>{{ username }}<small>Workspace owner</small></div></div><button class="logout" @click="logout">Sign out <LogOut :size="15" /></button></div>
     </aside>
 
     <section class="workspace">
-      <header><div><button v-if="showDetail" class="back-button" @click="closeDetail"><ArrowLeft :size="15" /> All servers</button><div class="eyebrow">{{ showDetail ? 'Server / details' : 'Workspace / overview' }}</div><h1>{{ showDetail ? selectedServer?.name : `Good to see you, ${username}.` }}</h1><p>{{ showDetail ? 'Inspect telemetry and work directly inside this container.' : 'Here is the pulse of your local infrastructure.' }}</p></div><button v-if="!showDetail" class="primary-button" @click="showCreate = true"><Plus :size="16" /> Provision server</button></header>
-      <p v-if="error" class="notice error">{{ error }}</p>
-      <section class="stats-grid"><article><span class="stat-label">Total servers</span><strong>{{ servers.length.toString().padStart(2, '0') }}</strong><small>Provisioned workloads</small></article><article><span class="stat-label">Running now</span><strong>{{ runningCount.toString().padStart(2, '0') }}</strong><small class="green"><CircleDot :size="11" /> Operational</small></article><article><span class="stat-label">Allocated memory</span><strong>{{ totalMemory }}<i> MB</i></strong><small>Across active limits</small></article><article><span class="stat-label">System health</span><strong class="green">Good</strong><small class="green"><CircleDot :size="11" /> All systems nominal</small></article></section>
+      <header v-if="activeTab === 'overview'"><div><button v-if="showDetail" class="back-button" @click="closeDetail"><ArrowLeft :size="15" /> All servers</button><div class="eyebrow">{{ showDetail ? 'Server / details' : 'Workspace / overview' }}</div><h1>{{ showDetail ? selectedServer?.name : `Good to see you, ${username}.` }}</h1><p>{{ showDetail ? 'Inspect telemetry and work directly inside this container.' : 'Here is the pulse of your local infrastructure.' }}</p></div><button v-if="!showDetail" class="primary-button" @click="showCreate = true"><Plus :size="16" /> Provision server</button></header>
+      
+      <header v-else-if="activeTab === 'notifications'">
+        <div>
+          <div class="eyebrow">System Alerts</div>
+          <h1>Notifications</h1>
+          <p>{{ unreadNotifications.length }} unread of {{ notifications.length }} events across your infrastructure.</p>
+        </div>
+        <div class="notification-controls">
+          <div class="segmented">
+            <button :class="{ active: notificationFilter === 'all' }" @click="notificationFilter = 'all'">All <b>{{ notifications.length }}</b></button>
+            <button :class="{ active: notificationFilter === 'unread' }" @click="notificationFilter = 'unread'">Unread <b>{{ unreadNotifications.length }}</b></button>
+          </div>
+          <button class="text-button" :disabled="!unreadNotifications.length" @click="markAllNotificationsRead"><Check :size="14" /> Mark all as read</button>
+        </div>
+      </header>
 
-      <section v-if="!showDetail" class="content-grid"><div class="server-section"><div class="section-heading"><div><div class="eyebrow">Managed resources</div><h2>Your servers</h2></div><button class="text-button" @click="loadDashboard"><RefreshCw :size="14" /> Refresh</button></div><div v-if="loading" class="empty-state">Syncing with the control plane...</div><div v-else-if="!servers.length" class="empty-state">No servers yet. Provision your first workload.</div><div v-else class="server-list"><article v-for="server in servers" :key="server.id" class="server-row" @click="selectServer(server.id)"><div class="server-icon"><Server :size="19" /></div><div class="server-main"><div class="server-title"><h3>{{ server.name }}</h3><span :class="['status', server.status]">{{ server.status_display }}</span></div><p class="server-meta"><span><Box :size="13" /> {{ server.framework_display || server.image_display }}</span><span><Cpu :size="13" /> {{ server.template_name }}</span><span><Network :size="13" /> {{ server.host_port || 'Not mapped' }}</span></p></div><div class="server-actions"><button v-if="server.status === 'running'" @click.stop="lifecycle('stop', server)">Stop</button><button v-else-if="['stopped', 'failed'].includes(server.status)" @click.stop="lifecycle('start', server)">Start</button><button title="Restart" aria-label="Restart" @click.stop="lifecycle('restart', server)"><RotateCw :size="15" /></button><button class="delete-action" title="Delete server" aria-label="Delete server" @click.stop="deleteServer(server)"><Trash2 :size="15" /></button><ChevronRight :size="17" /></div></article></div></div></section>
+      <header v-else-if="activeTab === 'templates'">
+        <div>
+          <div class="eyebrow">Resource Presets</div>
+          <h1>Templates</h1>
+          <p>Standardized configurations for your Docker workloads.</p>
+        </div>
+      </header>
+
+      <p v-if="error" class="notice error">{{ error }}</p>
+
+      <template v-if="activeTab === 'overview'">
+        <section class="stats-grid"><article><span class="stat-label">Total servers</span><strong>{{ servers.length.toString().padStart(2, '0') }}</strong><small>Provisioned workloads</small></article><article><span class="stat-label">Running now</span><strong>{{ runningCount.toString().padStart(2, '0') }}</strong><small class="green"><CircleDot :size="11" /> Operational</small></article><article><span class="stat-label">Allocated memory</span><strong>{{ totalMemory }}<i> MB</i></strong><small>Across active limits</small></article><article><span class="stat-label">System health</span><strong class="green">Good</strong><small class="green"><CircleDot :size="11" /> All systems nominal</small></article></section>
+
+        <section v-if="!showDetail" class="content-grid"><div class="server-section"><div class="section-heading"><div><div class="eyebrow">Managed resources</div><h2>Your servers</h2></div>
+      <div class="db-header-actions">
+        <button class="text-button" @click="runHealthCheck"><RotateCw :size="14" /> Run Health Check</button>
+        <button class="text-button" @click="loadDashboard"><RefreshCw :size="14" /> Refresh</button>
+      </div>
+      </div><div v-if="loading" class="empty-state">Syncing with the control plane...</div><div v-else-if="!servers.length" class="empty-state">No servers yet. Provision your first workload.</div><div v-else class="server-list"><article v-for="server in servers" :key="server.id" class="server-row" @click="selectServer(server.id)"><div class="server-icon"><Server :size="19" /></div><div class="server-main"><div class="server-title"><h3>{{ server.name }}</h3><span :class="['status', server.status]">{{ server.status_display }}</span></div><p class="server-meta"><span><Box :size="13" /> {{ server.framework_display || server.image_display }}</span><span><Cpu :size="13" /> {{ server.template_name }}</span><span><Network :size="13" /> {{ server.host_port || 'Not mapped' }}</span></p></div><div class="server-actions"><button v-if="server.status === 'running'" @click.stop="lifecycle('stop', server)">Stop</button><button v-else-if="['stopped', 'failed'].includes(server.status)" @click.stop="lifecycle('start', server)">Start</button><button title="Restart" aria-label="Restart" @click.stop="lifecycle('restart', server)"><RotateCw :size="15" /></button><button class="delete-action" title="Delete server" aria-label="Delete server" @click.stop="deleteServer(server)"><Trash2 :size="15" /></button><ChevronRight :size="17" /></div></article></div></div></section>
+      </template>
+
+      <template v-else-if="activeTab === 'notifications'">
+        <div v-if="!notifications.length" class="empty-state">No notifications yet. Incidents opened or resolved on your servers appear here.</div>
+        <div v-else-if="!visibleNotifications.length" class="empty-state">Nothing unread — you are all caught up.</div>
+        <div v-else class="notification-groups">
+          <section v-for="group in groupedNotifications" :key="group.label">
+            <h3 class="notification-day">{{ group.label }}</h3>
+            <div class="server-list">
+              <article v-for="note in group.items" :key="note.id" :class="['server-row', 'notification-row', { unread: !note.is_read }]" @click="markNotificationRead(note)">
+                <div :class="['server-icon', note.level]">
+                  <ShieldAlert v-if="note.kind === 'incident_opened'" :size="19" />
+                  <Check v-else-if="note.kind === 'incident_resolved'" :size="19" />
+                  <Bell v-else :size="19" />
+                </div>
+                <div class="notification-main">
+                  <div class="server-title">
+                    <h3>{{ note.title || note.kind_display }}</h3>
+                    <span v-if="note.title" :class="['notification-kind', note.level]">{{ note.kind_display }}</span>
+                  </div>
+                  <p class="notification-message">{{ note.message }}</p>
+                  <p class="server-meta">
+                    <span :title="formatDateTime(note.created_at)"><CircleDot v-if="!note.is_read" :size="11" /> {{ relativeTime(note.created_at) }}</span>
+                    <span v-if="note.server_name"><Box :size="13" /> {{ note.server_name }}</span>
+                    <span v-else><Box :size="13" /> System</span>
+                  </p>
+                </div>
+                <div class="notification-side">
+                  <button
+                    class="detail-control"
+                    :disabled="!note.server || note.server_status === 'deleted'"
+                    :title="note.server ? `Open ${note.server_name}` : 'This notification has no linked server'"
+                    @click.stop="openNotificationServer(note)"
+                  >
+                    <ArrowUpRight :size="14" /> {{ note.server_status === 'deleted' ? 'Server removed' : 'View server' }}
+                  </button>
+                  <span v-if="note.server" :class="['status', note.server_status]">{{ note.server_status }}</span>
+                </div>
+              </article>
+            </div>
+          </section>
+        </div>
+      </template>
+
+      <template v-else-if="activeTab === 'templates'">
+        <div v-if="!templates.length" class="empty-state">No templates found.</div>
+        <div v-else class="server-list">
+          <article v-for="tpl in templates" :key="tpl.id" class="server-row template-row">
+            <div class="server-icon"><Cpu :size="19" /></div>
+            <div class="server-main">
+              <div class="server-title"><h3>{{ tpl.name }}</h3></div>
+              <p class="server-meta"><span><Cpu :size="13" /> {{ tpl.cpu_limit }} Cores</span><span><Database :size="13" /> {{ tpl.memory_mb }} MB RAM</span></p>
+              <p v-if="tpl.description" class="template-desc">{{ tpl.description }}</p>
+            </div>
+          </article>
+        </div>
+      </template>
     </section>
 
 <section v-if="showDetail && selectedServer" class="server-detail-page">
@@ -849,6 +1158,7 @@ onBeforeUnmount(() => { closeTerminal(); closeLogs(); stopProvisioningPoll() })
         <button v-if="['stopped', 'failed'].includes(selectedServer.status)" class="detail-control primary" :disabled="Boolean(lifecycleAction)" @click="lifecycle('start', selectedServer)">{{ lifecycleAction === 'start' ? 'Starting…' : 'Start server' }}</button>
         <button v-if="selectedServer.status === 'running'" class="detail-control" :disabled="Boolean(lifecycleAction)" @click="lifecycle('stop', selectedServer)">{{ lifecycleAction === 'stop' ? 'Stopping…' : 'Stop server' }}</button>
         <button v-if="selectedServer.status === 'running'" class="detail-control" :disabled="Boolean(lifecycleAction)" @click="lifecycle('restart', selectedServer)"><RotateCw :size="14" /> {{ lifecycleAction === 'restart' ? 'Restarting…' : 'Restart' }}</button>
+        <button class="detail-control" :disabled="Boolean(lifecycleAction)" @click="openIncidentModal"><ShieldAlert :size="14" /> Trigger Incident</button>
         <button class="detail-control" :disabled="loading || Boolean(lifecycleAction)" @click="loadDashboard"><RefreshCw :size="14" /> Refresh</button>
         <button class="detail-control danger" :disabled="Boolean(lifecycleAction)" @click="deleteServer(selectedServer)"><Trash2 :size="14" /> Delete</button>
       </div>
@@ -1179,7 +1489,74 @@ onBeforeUnmount(() => { closeTerminal(); closeLogs(); stopProvisioningPoll() })
       </form>
     </div>
 
+    <div v-if="showIncidentModal" class="modal-backdrop" @click.self="closeIncidentModal">
+      <form class="incident-modal" role="dialog" aria-modal="true" aria-labelledby="incident-title" tabindex="-1"
+            @submit.prevent="triggerIncident" @keydown.esc="closeIncidentModal">
+        <div class="incident-head section-heading">
+          <div><div class="eyebrow">Monitoring sandbox</div><h2 id="incident-title">Trigger an incident</h2></div>
+          <button type="button" class="close-button" aria-label="Close" @click="closeIncidentModal"><X :size="20" /></button>
+        </div>
+
+        <div class="incident-body">
+          <div class="incident-target">
+            <div class="incident-target-icon"><Box :size="15" /></div>
+            <div class="incident-target-body">
+              <strong>{{ selectedServer?.name }}</strong>
+              <small>{{ selectedServer?.image_display }} · {{ selectedServer?.template_name }} · {{ selectedServer?.effective_cpu_limit }} CPU / {{ selectedServer?.effective_memory_mb }} MB</small>
+            </div>
+            <span :class="['status', selectedServer?.status]">{{ selectedServer?.status_display }}</span>
+          </div>
+
+          <fieldset class="incident-options">
+            <legend>Incident type</legend>
+            <label v-for="option in incidentOptions" :key="option.value"
+                   :class="['incident-option', option.tone, { selected: incidentForm.type === option.value }]">
+              <input type="radio" v-model="incidentForm.type" :value="option.value" />
+              <span class="incident-option-icon"><component :is="option.icon" :size="16" /></span>
+              <span class="incident-option-body">
+                <span class="incident-option-title">
+                  {{ option.label }}
+                  <em v-if="openIncidentTypes.has(option.value)" class="incident-active-tag">already open</em>
+                </span>
+                <span v-if="incidentForm.type === option.value" class="incident-option-detail">{{ option.detail }}</span>
+              </span>
+            </label>
+          </fieldset>
+
+          <p class="incident-preview">
+            <Bell :size="13" />
+            <span>Expect a <strong>{{ selectedIncidentOption.label }}</strong> entry in Notifications, plus a matching row in the incident history below.</span>
+          </p>
+
+          <p v-if="incidentError" class="error">{{ incidentError }}</p>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="text-button" :disabled="incidentSubmitting" @click="closeIncidentModal">Cancel</button>
+          <button class="primary-button danger" type="submit" :disabled="incidentSubmitting">
+            {{ incidentSubmitting ? 'Triggering…' : 'Trigger incident' }}
+            <RefreshCw v-if="incidentSubmitting" class="spin" :size="16" />
+            <ShieldAlert v-else :size="16" />
+          </button>
+        </div>
+      </form>
+    </div>
+
     <div v-if="showCreate" class="modal-backdrop" @click.self="showCreate = false"><form class="create-modal" @submit.prevent="createServer"><div class="section-heading"><div><div class="eyebrow">New resource</div><h2>Provision server</h2></div><button type="button" class="close-button" aria-label="Close" @click="showCreate = false"><X :size="20" /></button></div><label>Server name<input v-model="createForm.name" required placeholder="edge-web-01"></label><label>Image<select v-model="createForm.image" @change="setFrameworkDefault"><option value="nginx">Nginx</option><option value="python">Python</option><option value="node">Node.js</option><option value="php">PHP / XAMPP</option><option value="postgres">PostgreSQL</option><option value="custom">Custom</option></select></label><p v-if="createForm.image === 'php'" class="framework-help">XAMPP installs Apache, MariaDB, PHP, Perl, and <code>nano</code>, then starts Apache automatically. Your PHP files live in <code>/opt/lampp/htdocs</code>.</p><label v-if="createForm.image === 'python'">Python framework<select v-model="createForm.framework"><option value="">Blank Python (runtime only)</option><option value="fastapi">FastAPI</option><option value="flask">Flask</option><option value="django">Django</option></select></label><label v-if="createForm.image === 'node'">Node.js framework<select v-model="createForm.framework"><option value="">Blank Node.js (runtime only)</option><option value="express">Express</option><option value="nextjs">Next.js</option></select></label><p v-if="['python', 'node'].includes(createForm.image)" class="framework-help"><template v-if="createForm.framework">A starter project is created in <code>/workspace</code>; framework dependencies install before the app starts.</template><template v-else>The runtime and <code>nano</code> are ready in the interactive shell, and a basic landing page remains available at the published URL.</template></p><label>Template<select v-model="createForm.template" required :disabled="!templates.length"><option value="" disabled>{{ templates.length ? 'Choose a resource preset' : 'No templates available' }}</option><option v-for="template in templates" :key="template.id" :value="template.id">{{ template.name }} - {{ template.cpu_limit }} CPU / {{ template.memory_mb }} MB</option></select></label><p v-if="!templates.length" class="error">No templates are available. Seed the built-in templates before provisioning.</p><label v-if="createForm.image === 'custom'">Custom image<input v-model="createForm.custom_image" placeholder="registry/image:tag"></label><template v-if="createForm.image === 'postgres'"><p class="postgres-help">Credentials are used to initialize this isolated PostgreSQL container. Leave the password blank to generate one; copy its connection URI from the detail page after provisioning.</p><label>Database name<input v-model="createForm.postgres_database" required pattern="[A-Za-z_][A-Za-z0-9_]*"></label><label>Database user<input v-model="createForm.postgres_username" required pattern="[A-Za-z_][A-Za-z0-9_]*"></label><label>Database password<input v-model="createForm.postgres_password" type="password" minlength="12" placeholder="Generated securely if left blank"></label><label>Database storage limit<select v-model="createForm.database_size_mb"><option :value="null">No limit</option><option :value="512">512 MB</option><option :value="1024">1 GB</option><option :value="5120">5 GB</option><option :value="10240">10 GB</option></select></label><p class="postgres-help">A selected limit constrains the PostgreSQL container writable layer, including its database files.</p></template><button class="primary-button" :disabled="!templates.length"><Plus :size="16" /> Provision container</button></form></div>
+
+    <div class="toast-container">
+      <TransitionGroup name="toast">
+        <div v-for="note in toasts" :key="note.id" :class="['toast', note.level]">
+          <div class="toast-icon">
+            <Check v-if="note.level === 'success'" :size="16" />
+            <X v-else-if="note.level === 'error'" :size="16" />
+            <Info v-else :size="16" />
+          </div>
+          <div class="toast-content">{{ note.message }}</div>
+          <button type="button" class="toast-close" aria-label="Close notification" @click="removeToast(note.id)"><X :size="14" /></button>
+        </div>
+      </TransitionGroup>
+    </div>
   </main>
 </template>
 

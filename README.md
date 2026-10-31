@@ -45,12 +45,22 @@ Set a real `DJANGO_SECRET_KEY` in `.env`, then initialize the database and seed 
 .\.venv\Scripts\python.exe manage.py runserver
 ```
 
-Start a Celery worker and beat process in separate terminals when Redis is running:
+Celery needs a broker. Start Redis locally with Docker, or use any other Redis reachable at `REDIS_URL`:
 
 ```powershell
-celery -A minicloud worker --loglevel=info
-celery -A minicloud beat --loglevel=info
+docker run -d --name minicloud-redis --restart unless-stopped -p 127.0.0.1:6379:6379 redis:7-alpine
 ```
+
+Start a Celery worker and beat process in separate terminals. Windows has no `fork`, so the worker needs `--pool=solo` (or `--pool=threads`):
+
+```powershell
+.\.venv\Scripts\celery.exe -A minicloud worker --pool=solo --loglevel=info
+.\.venv\Scripts\celery.exe -A minicloud beat --loglevel=info
+```
+
+Without worker and beat, nothing collects metrics, checks container health, restarts dead containers, or opens and resolves incidents: the dashboard only shows whatever the last request left in the database.
+
+Uncomment `CHANNEL_REDIS_URL` in `.env` if the worker should push notifications into open dashboard websockets. Django keeps `channels.layers.InMemoryChannelLayer` while it is commented, and an in-memory layer cannot cross process boundaries, so worker-created alerts are stored but never delivered live. Restart `runserver` after changing it.
 
 Open `http://127.0.0.1:8000/`. Real provisioning requires Docker Desktop to be running.
 

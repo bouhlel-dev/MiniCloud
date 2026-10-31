@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.conf import settings
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils import timezone
@@ -66,8 +67,44 @@ class Incident(models.Model):
 
     def resolve(self):
         if self.status == self.Status.RESOLVED:
-            return
+            return False
         self.status = self.Status.RESOLVED
         self.resolved_at = timezone.now()
         self.save(update_fields=["status", "resolved_at"])
+        return True
+
+
+class Notification(models.Model):
+    class Kind(models.TextChoices):
+        INCIDENT_OPENED = "incident_opened", "Incident opened"
+        INCIDENT_RESOLVED = "incident_resolved", "Incident resolved"
+        SYSTEM = "system", "System"
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="notifications")
+    server = models.ForeignKey(
+        Server,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="notifications",
+    )
+    kind = models.CharField(max_length=32, choices=Kind.choices, default=Kind.SYSTEM)
+    title = models.CharField(max_length=140, blank=True, default="")
+    message = models.TextField()
+    level = models.CharField(
+        max_length=20,
+        choices=[
+            ("info", "Info"),
+            ("warning", "Warning"),
+            ("error", "Error"),
+            ("success", "Success"),
+        ],
+        default="info",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_read = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["user", "is_read", "created_at"])]
 
