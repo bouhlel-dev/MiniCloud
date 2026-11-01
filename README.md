@@ -1,6 +1,6 @@
 # MiniCloud
 
-MiniCloud is a self-hosted Django platform for provisioning and monitoring local Docker containers. It gives each user a quota, keeps lifecycle state in the database, collects Docker metrics with Celery, and exposes both a browser dashboard and a token-authenticated API.
+MiniCloud is a self-hosted Django platform for provisioning and monitoring local Docker containers. It gives each user a quota, keeps lifecycle state in the database, collects Docker metrics with Celery, and exposes a server-rendered dashboard, a Vue single-page app, and a token-authenticated API. Each server can also be given SSH access with key pairs MiniCloud mints and never stores.
 
 ## Architecture
 
@@ -19,16 +19,36 @@ flowchart LR
 
 | Layer | MiniCloud implementation |
 | --- | --- |
-| Models | `accounts`, `servers`, and `monitoring` models store users, quotas, lifecycle state, snapshots, health checks, and incidents. |
+| Models | `accounts`, `servers`, and `monitoring` models store users and quotas, lifecycle state, resource templates, `ServerSSHKey` rows, metric snapshots, health checks, incidents, and notifications. |
 | Views | Class-based server/template views render the dashboard and call the services layer. DRF viewsets expose the API. |
-| Templates | `templates/` contains the Bootstrap dashboard, provisioning forms, incident history, Chart.js charts, and live log panel. |
+| Templates | `templates/` contains the Bootstrap dashboard, provisioning forms, incident history, Chart.js charts, live log and terminal panels, and the one-time private key page. |
 | Services | `servers/services.py` owns provisioning and lifecycle actions. `servers/docker_service.py` is the only Docker SDK boundary. |
 | Background work | Celery tasks collect metrics, prune old snapshots, restart unhealthy containers, and open or resolve incidents. |
-| Realtime | Channels consumers stream metrics and Docker logs over authenticated WebSockets. |
+| Realtime | Channels consumers stream metrics, Docker logs, an interactive shell, and notifications over token-authenticated WebSockets. |
+
+## The two dashboards
+
+Two front ends talk to the same API and are both maintained:
+
+- **Server-rendered dashboard** — Django views and Bootstrap templates at `http://127.0.0.1:8000/`. Session login (the same accounts as the API), server list, provisioning form, detail page with Chart.js metrics, live logs, terminal, incidents, SSH keys, and staff-only resource-template CRUD (`/server-templates/`).
+- **Vue single-page app** — `frontend/`, built with Vite. It is *not* served by Django: nothing references `frontend/dist`, so run it on its own dev server or host the build yourself.
+
+```powershell
+cd frontend
+npm install
+npm run dev      # http://localhost:5173, or 5174 when 5173 is taken
+npm run build    # static bundle in frontend/dist
+```
+
+The app reads `VITE_API_BASE` and falls back to `http://127.0.0.1:8000/api`, so it does not proxy `/api` through Vite; `CORS_ALLOWED_ORIGINS` already allows the 5173 and 5174 origins on both `localhost` and `127.0.0.1`. The token and username live in `localStorage` under `minicloud_token` and `minicloud_user`.
+
+One account works on both: the SPA's login form posts to `/api/token/` and keeps the token, while the server-rendered pages use Django sessions and redirect anonymous visitors to `/admin/login/`. There is no self-signup, and `seed_minicloud` creates one ordinary (non-staff) user, so `/admin/` and the staff-only template editor need an account from `manage.py createsuperuser`.
+
+Beyond the MVT features it adds the Tools dock (Shell · SSH · Database · Logs · Details), the notification inbox with toasts, the PostgreSQL data workbench, and the provisioning progress stepper.
 
 ## Local setup
 
-Requirements: Python 3.12+, Docker Desktop or Docker Engine, and Redis. PostgreSQL is optional for local development because the default configuration falls back to SQLite, but PostgreSQL is used by Compose and CI.
+Requirements: Python 3.12+, Docker Desktop or Docker Engine, and Redis. PostgreSQL is optional for local development because the default configuration falls back to SQLite; `docker-compose.yml` provisions PostgreSQL instead, as described further down.
 
 ```powershell
 py -m venv .venv
@@ -37,13 +57,17 @@ pip install -r requirements.txt
 Copy-Item .env.example .env
 ```
 
-Set a real `DJANGO_SECRET_KEY` in `.env`, then initialize the database and seed the built-in templates:
+Set a real `DJANGO_SECRET_KEY` in `.env`. Then check the two lines the example file gets wrong for a bare machine: `DATABASE_URL` points at a PostgreSQL user `postgres` with password `root`, so change it to `sqlite:///db.sqlite3` if you are not running one, and `DJANGO_EMAIL_BACKEND` points at Gmail SMTP with placeholder credentials, so set it to `django.core.mail.backends.console.EmailBackend` if you have no SMTP account. Neither mistake is fatal — the email failure is caught and logged per alert, but `migrate` cannot start against a database that is not there.
+
+Initialize the database and seed the built-in templates:
 
 ```powershell
 .\.venv\Scripts\python.exe manage.py migrate
 .\.venv\Scripts\python.exe manage.py seed_minicloud --password change-me
 .\.venv\Scripts\python.exe manage.py runserver
 ```
+
+`runserver` is Daphne, not the plain Django server — `daphne` and `channels` are installed and the app is served through `minicloud.asgi:application`, which is what makes the WebSockets work. Sign in with the user you just seeded (`demo` / `change-me` by default).
 
 Celery needs a broker. Start Redis locally with Docker, or use any other Redis reachable at `REDIS_URL`:
 
@@ -64,9 +88,43 @@ Uncomment `CHANNEL_REDIS_URL` in `.env` if the worker should push notifications 
 
 Open `http://127.0.0.1:8000/`. Real provisioning requires Docker Desktop to be running.
 
+## Images and provisioning
+
+Provisioning runs in a background thread and reports progress through `Server.provisioning_step`, which both dashboards poll. Each choice does something different inside the container:
+
+| Image | Base | Published port | What MiniCloud sets up |
+| --- | --- | --- | --- |
+| Nginx | `nginx:alpine` | 80 | Overwrites `/usr/share/nginx/html/index.html` with a generated "server is live" page. |
+| Python | `python:3.12-slim` | 8000 | FastAPI, Flask or Django starter written to `/workspace` with its dependencies installed and the right run command; blank framework serves the generated landing page with `python -m http.server 8000`. |
+| Node.js | `node:22-alpine` | 3000 | Express or Next.js starter, same idea; blank framework runs an inline Node HTTP server with a landing page. |
+| PHP / XAMPP | `debian:bookworm-slim` | 80 | Downloads the Linux XAMPP installer from `MINICLOUD_XAMPP_INSTALLER_URL`, installs Apache, MariaDB, PHP, Perl, `nano` and friends, starts Apache, then waits for the port to answer. |
+| PostgreSQL | `postgres:16-alpine` | 5432 | Requires database credentials (blank password is generated) and can cap the writable layer at 512 MB / 1 / 5 / 10 GB. |
+| Custom | any reference you type | **80 only** | Nothing. An app listening on another port is unreachable because only `80/tcp` is published. |
+
+Frameworks apply to Python and Node only. `nano` is installed into every image except PHP, whose package list already includes it, so the shell always has an editor. CPU is enforced as `cpu_quota` from `template.cpu_limit` and memory as `mem_limit`, with PHP raised to `MINICLOUD_XAMPP_MIN_MEMORY_MB` because XAMPP does not fit in the 256 MB "Small" preset.
+
+## Quotas
+
+Every account has three ceilings — `max_servers` (3), `max_cpu_cores` (4.00) and `max_memory_mb` (4096) — checked together when a server is provisioned, so a request that would cross any of them fails with HTTP 409 and creates nothing. Usage counts every server that is not deleted, sums `template.cpu_limit` for CPU and `effective_memory_mb` for memory, which is why a PHP server bills 1024 MB even on a Small template. Deleting a server frees its ports and quota. The three fields are edited only in Django admin (`/admin/`), not through the API or either dashboard.
+
+## Working with a server
+
+The detail view is where a container is used, not just watched:
+
+- **Terminal** — `/ws/servers/<id>/terminal/` gives an interactive shell inside the running container, and PostgreSQL servers get `psql` instead of `sh`. The SPA opens it from the Shell tab, the MVT page embeds it in a dark panel. `POST /api/servers/<id>/execute/` runs one command and returns the output.
+- **Live logs** — `/ws/servers/<id>/logs/` tails the last 100 container log lines and pushes new ones as they appear; both dashboards render it.
+- **Database workbench** (SPA, PostgreSQL servers only) — the Database tab browses schemas, tables and rows, edits and deletes rows, creates and truncates or drops tables, and runs statements in a SQL console. Everything goes through `servers/database_admin.py`, which connects to the published port, caps result pages at 500 rows and statements at 20,000 characters, and stops a query after 15 seconds. PostgreSQL servers also publish a `postgresql://user:pass@host:port/db` string, URL-escaped, on the MVT detail page and as `postgres_connection_string` in the API so an outside client can connect directly.
+- **Environment variables** — posted as a JSON object at creation, and changed later with `PATCH /api/servers/<id>/` (`env_vars`). They are written into the container at creation, so a change takes effect on the next restart.
+- **Metrics** — snapshots every `MINICLOUD_METRIC_INTERVAL_SECONDS`, served by `GET /api/servers/<id>/metrics/` for history and `/metrics/live/` for the current reading, and pushed live over `/ws/servers/<id>/metrics/`.
+- **Incidents** — opened by the health check and resource monitors, listed newest first, and resolved automatically when the condition clears. There is no manual resolve control yet: the SPA's *Trigger an incident* button exists to exercise the pipeline and its own message tells you to resolve from the server page, which nothing can do.
+- **Notifications** — every incident opened or resolved and every system message is stored per user, delivered live over `/ws/notifications/`, and shown as a toast and in the SPA's Notifications tab with unread filtering, mark-as-read and mark-all-read. The MVT dashboard has no notifications page.
+- **Health checks** — `POST /api/servers/run_health_check/` runs the same sweep beat performs every 10 seconds, which is also what auto-restarts a container that stops answering.
+
 ## Alert thresholds
 
 Both resource alerts compare against the container's own quota, not the host: `MINICLOUD_HIGH_CPU_PERCENT` is the share of `template.cpu_limit` and `MINICLOUD_HIGH_MEMORY_PERCENT` is the share of the memory actually given to the container, which is `max(template.memory_mb, MINICLOUD_XAMPP_MIN_MEMORY_MB)` for PHP images. A breach must hold for a full 60-second window of snapshots before an incident opens, and `MINICLOUD_HEALTH_DOWN_FAILURES` consecutive failed health checks (default 3, so 30 seconds at the 10-second interval) are required before a Down incident opens or a container is auto-restarted. `HealthCheck.consecutive_failures` resets on any successful check.
+
+Auto-restart is capped: after `MINICLOUD_HEALTH_MAX_RESTART_ATTEMPTS` (default 3) attempts the server is marked `failed` and MiniCloud stops reviving it. Each opened incident also mails its owner, subject to a `MINICLOUD_ALERT_COOLDOWN_SECONDS` (default 900) gap per server, through `DJANGO_EMAIL_BACKEND` — the console backend by default, so nothing leaves the machine until SMTP credentials are configured. Old snapshots are pruned hourly once they pass `MINICLOUD_METRIC_RETENTION_DAYS` (default 7).
 
 ## SSH access
 
@@ -74,7 +132,7 @@ Tick **Enable SSH access** when provisioning, or post `ssh_enabled` to `/api/ser
 
 ### Key pairs
 
-Every key is a row of its own, one per device, named after it (`work-laptop`, `phone`). Each row stores only the OpenSSH public line, so a lost device is revoked by deleting its row and nothing else changes.
+Every key is a row of its own, one per device, named after it (`work-laptop`, `phone`). Each row stores only the OpenSSH public line, so a lost device is revoked by deleting its row and nothing else changes. Keys are managed from the **SSH** tab in the SPA's Tools dock, or the SSH access card on the server page in the MVT dashboard.
 
 **Generate a pair.** Leave **Public key** blank — on the server page or in `POST /api/servers/<id>/ssh/keys/` — and MiniCloud mints an ed25519 pair, keeps the public half, and shows the private half exactly once with a copy button and a download. Nothing stores it: not the database, not the container, not the logs. If you close the page without saving it, generate another. A pasted public key is normalised and stored instead, and no private half is ever returned.
 
@@ -111,7 +169,7 @@ If the router's WAN address itself looks private (`100.64.0.0/10`, `10.x`, `100.
 
 ## Docker Compose
 
-Compose starts Django, PostgreSQL, Redis, Celery worker, and Celery beat. The web and worker services mount `/var/run/docker.sock`, allowing MiniCloud to manage the host Docker daemon.
+Compose starts Django, PostgreSQL, Redis, Celery worker, and Celery beat. The web and worker services mount `/var/run/docker.sock`, allowing MiniCloud to manage the host Docker daemon. The image entrypoint (`docker/entrypoint.sh`) runs `migrate` and `collectstatic` before each service starts, and Compose injects `DATABASE_URL`, `REDIS_URL` and `CHANNEL_REDIS_URL` pointing at its own containers, which override whatever `.env` says.
 
 ```powershell
 Copy-Item .env.example .env
@@ -130,25 +188,91 @@ POST /api/token/
 {"username": "demo", "password": "..."}
 ```
 
-Send it as `Authorization: Token <token>`. Available endpoints:
+Send it as `Authorization: Token <token>`. Every route is scoped to the caller's own servers, and requests are throttled to `API_USER_RATE_LIMIT` (default 120/minute).
+
+Servers:
 
 - `GET, POST /api/servers/`
-- `GET, PATCH, DELETE /api/servers/<id>/` — `PATCH` accepts `name`, `custom_image`, `env_vars` and `ssh_allowed_from`
-- `POST /api/servers/<id>/start/`
-- `POST /api/servers/<id>/stop/`
-- `POST /api/servers/<id>/restart/`
-- `POST /api/servers/<id>/ssh/check/` — TCP probe of the advertised SSH host and port
+- `GET, PATCH, PUT, DELETE /api/servers/<id>/` — `PATCH` accepts `name`, `custom_image`, `env_vars` and `ssh_allowed_from`; `ssh_port` and the other provisioning fields cannot be reassigned
+- `POST /api/servers/<id>/start/` · `/stop/` · `/restart/`
+- `POST /api/servers/<id>/execute/` — one command in the container, returns output and exit code
+- `GET /api/servers/<id>/metrics/` — stored history · `GET /api/servers/<id>/metrics/live/` — the current reading
+- `POST /api/servers/run_health_check/` — the sweep beat runs every 10 seconds
+- `POST /api/servers/<id>/trigger_incident/` — `{"type": "down" | "high_cpu" | "high_memory"}`, for exercising alerting
+
+SSH:
+
+- `POST /api/servers/<id>/ssh/check/` — TCP probe of the advertised host and port
 - `GET, POST /api/servers/<id>/ssh/keys/` — `POST` with only a `label` generates a pair and returns `private_key`, which is never stored or repeated
 - `DELETE /api/servers/<id>/ssh/keys/<key id>/` — revokes that key and republishes `authorized_keys`
-- `GET /api/servers/<id>/metrics/`
 
-## Tests and CI
+PostgreSQL workbench:
+
+- `GET /api/servers/<id>/database/` — databases, schemas, tables and sizes
+- `GET, DELETE /api/servers/<id>/database/tables/<schema>/<table>/` · `POST /api/servers/<id>/database/tables/` — inspect, drop, create
+- `GET, POST /api/servers/<id>/database/tables/<schema>/<table>/rows/` · `POST …/rows/update/` · `POST …/rows/delete/` — paged read, insert, update, delete
+- `POST /api/servers/<id>/database/tables/<schema>/<table>/truncate/`
+- `POST /api/servers/<id>/database/query/` — run a statement
+
+Everything else:
+
+- `GET /api/templates/` and `GET /api/templates/<id>/` — read-only; presets are created in the MVT dashboard by staff
+- `GET, POST /api/notifications/` · `GET, PATCH, PUT, DELETE /api/notifications/<id>/` · `POST /api/notifications/<id>/mark_read/` · `POST /api/notifications/mark_all_read/`
+
+## WebSockets
+
+All four routes authenticate with `?token=<token>` (the SPA puts it in the query string because browsers cannot set headers on a WebSocket):
+
+- `ws/servers/<id>/metrics/` — metric snapshots
+- `ws/servers/<id>/logs/` — container log tail
+- `ws/servers/<id>/terminal/` — interactive shell, `psql` for PostgreSQL servers
+- `ws/notifications/` — notifications as they are created, including those raised by Celery
+
+## Configuration reference
+
+Everything is read from `.env` at import time, so restart `runserver`, the worker and beat after changing it. Defaults are what a fresh clone gets.
+
+| Variable | Default | Controls |
+| --- | --- | --- |
+| `DJANGO_SECRET_KEY` | none, required | Signing and salt. Generate a new one per install. |
+| `DJANGO_DEBUG` | `false` | Django debug mode. |
+| `DJANGO_ALLOWED_HOSTS` | `localhost,127.0.0.1` | Host header allow-list; add your LAN or DDNS name when used remotely. |
+| `CORS_ALLOWED_ORIGINS` | the 5173 and 5174 origins on `localhost` and `127.0.0.1` | Which SPA dev servers may call the API. |
+| `DATABASE_URL` | `sqlite:///db.sqlite3` | PostgreSQL in Compose; SQLite otherwise. |
+| `REDIS_URL` | `redis://localhost:6379/0` | Celery broker and result backend. |
+| `CHANNEL_REDIS_URL` | unset | When set, Channels uses Redis so the worker can push into open websockets. |
+| `API_USER_RATE_LIMIT` | `120/minute` | DRF user throttle. |
+| `MINICLOUD_DOCKER_TIMEOUT` | `60` | Seconds a Docker call may take. |
+| `MINICLOUD_PORT_RANGE_START` / `_END` | `10000` / `11000` | Host ports allocated to published apps and SSH. |
+| `MINICLOUD_PUBLIC_HOST` | `localhost` | Host advertised for SSH when `MINICLOUD_SSH_HOST` is unset. |
+| `MINICLOUD_SSH_HOST` | falls back to the above | Host clients are told to connect to. |
+| `MINICLOUD_XAMPP_INSTALLER_URL` | SourceForge, XAMPP 8.2.12 | Installer fetched by PHP servers. |
+| `MINICLOUD_XAMPP_READY_TIMEOUT` | `1800` | Seconds to wait for Apache to come up. |
+| `MINICLOUD_XAMPP_MIN_MEMORY_MB` | `1024` | Memory floor billed and enforced for PHP. |
+| `MINICLOUD_METRIC_INTERVAL_SECONDS` | `10` | Snapshot cadence, and the health check interval. |
+| `MINICLOUD_METRIC_RETENTION_DAYS` | `7` | Age after which the hourly prune deletes snapshots. |
+| `MINICLOUD_HIGH_CPU_PERCENT` | `90` | Share of `template.cpu_limit` that opens a high-CPU incident. |
+| `MINICLOUD_HIGH_MEMORY_PERCENT` | `90` | Share of the container's memory quota for high-memory. |
+| `MINICLOUD_HEALTH_DOWN_FAILURES` | `3` | Consecutive failures before Down opens or a restart is attempted. |
+| `MINICLOUD_HEALTH_MAX_RESTART_ATTEMPTS` | `3` | Attempts before the server is given up on and marked failed. |
+| `MINICLOUD_ALERT_COOLDOWN_SECONDS` | `900` | Minimum gap between incident emails per server. |
+| `DJANGO_EMAIL_BACKEND` | console | Where incident emails go. |
+| `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS` | empty / `587` / empty / empty / `true` | SMTP credentials. |
+| `DEFAULT_FROM_EMAIL` | `alerts@minicloud.local` | Incident mail sender. |
+| `DEMO_USER_PASSWORD` | random, printed once | Password `seed_minicloud` gives the demo account. |
+| `VITE_API_BASE` | `http://127.0.0.1:8000/api` | API origin the SPA calls. |
+
+`manage.py seed_minicloud` also takes `--username` (default `demo`) and `--email`; it seeds the Small, Medium and Large templates plus that one account.
+
+## Tests
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -q
 .\.venv\Scripts\python.exe manage.py check
 .\.venv\Scripts\python.exe manage.py makemigrations --check --dry-run
+cd frontend
+npm run build
 ```
 
-GitHub Actions runs Ruff, Django checks, migration drift checks, and pytest against PostgreSQL and Redis.
+There is no continuous-integration setup in this repository: no `.github/workflows/`, and Ruff is neither installed nor configured. The commands above are run by hand.
 
