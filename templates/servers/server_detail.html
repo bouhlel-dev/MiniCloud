@@ -23,6 +23,7 @@
     <dl class="row mb-0">
       <dt class="col-sm-3">Template</dt><dd class="col-sm-9">{{ server.template.name }} ({{ server.template.cpu_limit }} CPU / {{ server.template.memory_mb }} MB)</dd>
       <dt class="col-sm-3">Host port</dt><dd class="col-sm-9">{{ server.host_port|default:"Not assigned" }}</dd>
+      {% if server.ssh_enabled %}<dt class="col-sm-3">SSH port</dt><dd class="col-sm-9">{{ server.ssh_port|default:"Not assigned" }}</dd>{% endif %}
       <dt class="col-sm-3">Container ID</dt><dd class="col-sm-9"><code>{{ server.container_id|default:"Not created" }}</code></dd>
       <dt class="col-sm-3">Created</dt><dd class="col-sm-9">{{ server.created_at }}</dd>
     </dl>
@@ -33,6 +34,18 @@
       <h2 class="h5 mb-2">PostgreSQL connection</h2>
       <p class="small text-muted">Use this URI from your host machine. It includes the database password, so treat it as a secret.</p>
       <div class="input-group"><input id="postgres-connection-string" class="form-control font-mono" value="{{ postgres_connection_string }}" readonly><button class="btn btn-outline-secondary" id="copy-postgres-connection" type="button">Copy</button></div>
+    </div>
+  {% endif %}
+  {% if server.ssh_command %}
+    <div class="dashboard-card bg-white p-4 mb-3">
+      <h2 class="h5 mb-2">SSH access</h2>
+      <p class="small text-muted">Key-only sign-in as <code>root</code> on port {{ server.ssh_port }}; password authentication stays disabled. The host is <code>{{ server.ssh_host }}</code>, so set <code>MINICLOUD_SSH_HOST</code> to an address your client can reach.</p>
+      {% if server.ssh_allowed_from %}
+        <p class="small text-muted mb-0">Accepted sources: <code>{{ server.ssh_allowed_from }}</code>. sshd refuses every other address before the key is even offered.</p>
+      {% elif server.ssh_exposed %}
+        <p class="small text-danger mb-0">{{ server.ssh_host }} is reachable from the internet and every source is accepted. Restrict <code>ssh_allowed_from</code> to the addresses you connect from.</p>
+      {% endif %}
+      <div class="input-group"><input id="ssh-command" class="form-control font-mono" value="{{ server.ssh_command }}" readonly><button class="btn btn-outline-secondary" id="copy-ssh-command" type="button">Copy</button></div>
     </div>
   {% endif %}
   <div class="dashboard-card bg-dark text-light p-4 mb-3">
@@ -136,8 +149,11 @@
         new ResizeObserver(resizeTerminal).observe(terminalHost);
       }
 
-      const copyButton = document.getElementById("copy-postgres-connection");
-      if (copyButton) copyButton.addEventListener("click", async () => { const connection = document.getElementById("postgres-connection-string"); await navigator.clipboard.writeText(connection.value); copyButton.textContent = "Copied"; });
+      for (const [buttonId, fieldId] of [["copy-postgres-connection", "postgres-connection-string"], ["copy-ssh-command", "ssh-command"]]) {
+        const button = document.getElementById(buttonId);
+        if (!button) continue;
+        button.addEventListener("click", async () => { await navigator.clipboard.writeText(document.getElementById(fieldId).value); button.textContent = "Copied"; });
+      }
     })();
   </script>
 {% endblock %}

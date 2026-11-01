@@ -117,6 +117,20 @@ def test_create_rejects_database_limit_for_non_postgres(api_client, user, server
     assert "database_size_mb" in response.data
 
 
+def test_create_accepts_a_body_without_the_optional_fields(api_client, user, server_template):
+    api_client.force_authenticate(user=user)
+
+    with patch("servers.services._spawn_provisioning"):
+        response = api_client.post(
+            "/api/servers/",
+            {"name": "lean", "image": "nginx", "template": server_template.pk},
+            format="json",
+        )
+
+    assert response.status_code == 201
+    assert response.data["env_vars"] == {}
+
+
 def test_metrics_returns_oldest_first(api_client, user, server):
     from monitoring.models import MetricSnapshot
 
@@ -338,7 +352,7 @@ def test_down_incident_waits_for_a_streak_of_failed_health_checks(db, user, serv
     assert Incident.objects.filter(
         server=server, type=Incident.Type.DOWN, status=Incident.Status.OPEN
     ).exists()
-    docker.start_container.assert_called_once_with("container-id")
+    docker.start_container.assert_called_once_with("container-id", server=server)
 
 
 def test_healthy_check_clears_the_failure_streak(db, user, server, settings):

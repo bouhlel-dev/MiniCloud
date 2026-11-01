@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
 from monitoring.models import Incident, MetricSnapshot, Notification
@@ -20,6 +21,9 @@ class ServerSerializer(serializers.ModelSerializer):
     incidents = serializers.SerializerMethodField()
     open_incidents_count = serializers.SerializerMethodField()
     provisioning_step_display = serializers.CharField(source="get_provisioning_step_display", read_only=True)
+    ssh_command = serializers.CharField(read_only=True)
+    ssh_host = serializers.CharField(read_only=True)
+    ssh_exposed = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = Server
@@ -40,6 +44,13 @@ class ServerSerializer(serializers.ModelSerializer):
             "effective_cpu_limit",
             "effective_memory_mb",
             "host_port",
+            "ssh_enabled",
+            "ssh_port",
+            "ssh_public_key",
+            "ssh_allowed_from",
+            "ssh_command",
+            "ssh_host",
+            "ssh_exposed",
             "env_vars",
             "container_id",
             "status",
@@ -53,12 +64,26 @@ class ServerSerializer(serializers.ModelSerializer):
             "incidents",
             "open_incidents_count",
         )
-        read_only_fields = ("host_port", "container_id", "status", "created_at", "provisioning_step", "provisioning_error")
+        read_only_fields = ("host_port", "ssh_port", "container_id", "status", "created_at", "provisioning_step", "provisioning_error")
 
     def validate_template(self, value):
         if not value:
             raise serializers.ValidationError("A server template is required.")
         return value
+
+    def validate_ssh_public_key(self, value):
+        if not (value or "").strip():
+            return value
+        try:
+            return Server.parse_ssh_public_key(value)
+        except DjangoValidationError as error:
+            raise serializers.ValidationError(error.messages) from error
+
+    def validate_ssh_allowed_from(self, value):
+        try:
+            return Server.parse_ssh_allowed_from(value or "")
+        except DjangoValidationError as error:
+            raise serializers.ValidationError(error.messages) from error
 
     def get_site_url(self, obj):
         if obj.image not in {Server.Image.NGINX, Server.Image.PYTHON, Server.Image.NODE, Server.Image.PHP} or not obj.host_port:
@@ -99,6 +124,10 @@ class ServerSerializer(serializers.ModelSerializer):
         framework = attrs.get("framework", getattr(self.instance, "framework", ""))
         if not Server.supports_framework(image, framework):
             raise serializers.ValidationError({"framework": "Choose a framework that matches the selected image."})
+        ssh_enabled = attrs.get("ssh_enabled", getattr(self.instance, "ssh_enabled", False))
+        ssh_public_key = attrs.get("ssh_public_key", getattr(self.instance, "ssh_public_key", "")) or ""
+        if ssh_enabled and not ssh_public_key.strip():
+            raise serializers.ValidationError({"ssh_public_key": "An OpenSSH public key is required to enable SSH access."})
         return attrs
 
 

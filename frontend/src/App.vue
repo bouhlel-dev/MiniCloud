@@ -39,7 +39,7 @@ const logs = ref('')
 const logsStatus = ref('Connecting...')
 const logsHost = ref(null)
 let logsPinnedToBottom = true
-const createForm = ref({ name: '', image: 'nginx', framework: '', database_size_mb: null, template: '', custom_image: '', env_vars: {}, postgres_database: 'minicloud', postgres_username: 'minicloud', postgres_password: '' })
+const createForm = ref({ name: '', image: 'nginx', framework: '', database_size_mb: null, template: '', custom_image: '', env_vars: {}, postgres_database: 'minicloud', postgres_username: 'minicloud', postgres_password: '', ssh_enabled: false, ssh_public_key: '', ssh_allowed_from: '' })
 let terminal = null
 let terminalSocket = null
 let logsSocket = null
@@ -461,7 +461,12 @@ const api = async (path, options = {}) => {
     ...options,
     headers: { 'Content-Type': 'application/json', ...(token.value ? { Authorization: `Token ${token.value}` } : {}), ...(options.headers || {}) },
   })
-  if (!response.ok) throw new Error((await response.json().catch(() => ({}))).detail || `Request failed (${response.status})`)
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}))
+    // field errors come back keyed by field, so flatten them into the one message line each form shows
+    const messages = [...new Set(Object.values(body).flat().filter(value => typeof value === 'string'))]
+    throw new Error(messages.join(' ') || `Request failed (${response.status})`)
+  }
   return response.status === 204 ? null : response.json()
 }
 
@@ -483,6 +488,45 @@ async function copyText(value, field) {
     window.setTimeout(() => { if (copiedField.value === field) copiedField.value = '' }, 1600)
   } catch {
     window.prompt('Copy this value', value)
+  }
+}
+
+const sshProbe = ref(null)
+const sshProbing = ref(false)
+const sshAllowlistDraft = ref('')
+const sshAllowlistSaving = ref(false)
+const sshAllowlistError = ref('')
+
+async function saveSshAllowlist() {
+  const server = selectedServer.value
+  if (!server || sshAllowlistSaving.value) return
+  sshAllowlistSaving.value = true
+  sshAllowlistError.value = ''
+  try {
+    const updated = await api(`/servers/${server.id}/`, { method: 'PATCH', body: JSON.stringify({ ssh_allowed_from: sshAllowlistDraft.value }) })
+    const index = servers.value.findIndex(item => item.id === updated.id)
+    if (index !== -1) servers.value[index] = updated
+    selectedServer.value = updated
+    // the serializer normalises every entry, so show what sshd actually enforces
+    sshAllowlistDraft.value = updated.ssh_allowed_from || ''
+  } catch (err) {
+    sshAllowlistError.value = err.message
+  } finally {
+    sshAllowlistSaving.value = false
+  }
+}
+
+async function checkSshReachability() {
+  const server = selectedServer.value
+  if (!server || sshProbing.value) return
+  sshProbing.value = true
+  sshProbe.value = null
+  try {
+    sshProbe.value = await api(`/servers/${server.id}/ssh/check/`, { method: 'POST' })
+  } catch (err) {
+    sshProbe.value = { state: 'error', message: err.message }
+  } finally {
+    sshProbing.value = false
   }
 }
 
@@ -635,6 +679,8 @@ async function selectServer(id) {
   closeDetailPanels()
   resetDatabase()
   selectedServer.value = servers.value.find(server => server.id === id) || null
+  sshProbe.value = null
+  sshAllowlistDraft.value = selectedServer.value?.ssh_allowed_from || ''
   if (!selectedServer.value) return
   showDetail.value = true
   metrics.value = await api(`/servers/${id}/metrics/`)
@@ -895,9 +941,13 @@ async function createServer() {
     delete payload.postgres_database
     delete payload.postgres_username
     delete payload.postgres_password
+    if (!payload.ssh_enabled) {
+      payload.ssh_public_key = ''
+      payload.ssh_allowed_from = ''
+    }
     const created = await api('/servers/', { method: 'POST', body: JSON.stringify(payload) })
     showCreate.value = false
-    createForm.value = { name: '', image: 'nginx', framework: '', database_size_mb: null, template: templates.value[0]?.id || '', custom_image: '', env_vars: {}, postgres_database: 'minicloud', postgres_username: 'minicloud', postgres_password: '' }
+    createForm.value = { name: '', image: 'nginx', framework: '', database_size_mb: null, template: templates.value[0]?.id || '', custom_image: '', env_vars: {}, postgres_database: 'minicloud', postgres_username: 'minicloud', postgres_password: '', ssh_enabled: false, ssh_public_key: '', ssh_allowed_from: '' }
     await loadDashboard()
     if (created?.id) await selectServer(created.id)
   } catch (err) { error.value = err.message }
@@ -1208,12 +1258,32 @@ onBeforeUnmount(() => {
               {{ copiedField === 'connection' ? 'Copied' : 'Copy URI' }}
             </button>
           </div>
+          <div v-if="selectedServer.ssh_command" class="summary-connection">
+            <code>{{ selectedServer.ssh_command }}</code>
+            <button type="button" @click="copyText(selectedServer.ssh_command, 'ssh')">
+              <Check v-if="copiedField === 'ssh'" :size="13" /><Copy v-else :size="13" />
+              {{ copiedField === 'ssh' ? 'Copied' : 'Copy SSH' }}
+            </button>
+          </div>
+          <div v-if="selectedServer.ssh_enabled" class="ssh-access">
+            <p v-if="selectedServer.ssh_exposed && !selectedServer.ssh_allowed_from" class="ssh-note warning"><ShieldAlert :size="13" />{{ selectedServer.ssh_host }} is reachable from the internet and every source is accepted until you list the addresses you connect from.</p>
+            <p v-else-if="selectedServer.ssh_exposed" class="ssh-note"><Info :size="13" />{{ selectedServer.ssh_host }} is reachable from the internet; your router has to forward to port {{ selectedServer.ssh_port }}.</p>
+            <p v-else class="ssh-note"><Info :size="13" />SSH host <code>{{ selectedServer.ssh_host }}</code> is a local address, so it only works where this machine is reachable.</p>
+            <div class="ssh-allowlist">
+              <label>Allowed from<input v-model="sshAllowlistDraft" spellcheck="false" placeholder="any source"></label>
+              <button type="button" :disabled="sshAllowlistSaving || sshAllowlistDraft === (selectedServer.ssh_allowed_from || '')" @click="saveSshAllowlist"><RefreshCw v-if="sshAllowlistSaving" class="spin" :size="13" />{{ sshAllowlistSaving ? 'Saving…' : 'Save allowlist' }}</button>
+              <button type="button" :disabled="sshProbing" @click="checkSshReachability"><RefreshCw v-if="sshProbing" class="spin" :size="13" /><Network v-else :size="13" />Check reachability</button>
+            </div>
+            <p v-if="sshAllowlistError" class="error">{{ sshAllowlistError }}</p>
+            <p v-if="sshProbe" :class="['ssh-probe', sshProbe.state]">{{ sshProbe.message }}</p>
+          </div>
         </div>
         <dl class="summary-stats">
           <div><dt>CPU</dt><dd>{{ cpuUsage }}<i>%</i></dd><small>of {{ selectedServer.effective_cpu_limit ?? selectedServer.template_cpu_limit }} cores</small></div>
           <div><dt>Memory</dt><dd>{{ memoryUsage }}<i>MB</i></dd><small>of {{ selectedServer.effective_memory_mb ?? selectedServer.template_memory_mb }} MB</small></div>
           <div><dt>Uptime</dt><dd>{{ latestMetric?.uptime_display || '—' }}</dd><small>since last restart</small></div>
           <div><dt>Host port</dt><dd>{{ selectedServer.host_port || '—' }}</dd><small>{{ selectedServer.postgres_connection_string ? 'published on localhost' : 'container mapping' }}</small></div>
+          <div v-if="selectedServer.ssh_enabled"><dt>SSH port</dt><dd>{{ selectedServer.ssh_port || '—' }}</dd><small>key only · {{ selectedServer.ssh_allowed_from ? 'allowlisted sources' : 'any source' }}</small></div>
           <div v-if="selectedServer.image === 'postgres'"><dt>Storage</dt><dd>{{ selectedServer.database_size_display || 'No limit' }}</dd><small>writable layer</small></div>
         </dl>
       </div>
@@ -1403,6 +1473,9 @@ onBeforeUnmount(() => {
               <div><dt>Template</dt><dd>{{ selectedServer.template_name }} ({{ selectedServer.template_cpu_limit }} CPU / {{ selectedServer.template_memory_mb }} MB)</dd></div>
               <div v-if="selectedServer.effective_memory_mb > selectedServer.template_memory_mb"><dt>Memory limit</dt><dd>{{ selectedServer.effective_memory_mb }} MB (XAMPP minimum)</dd></div>
               <div><dt>Host port</dt><dd>{{ selectedServer.host_port || 'Not assigned' }}</dd></div>
+              <div v-if="selectedServer.ssh_enabled"><dt>SSH port</dt><dd>{{ selectedServer.ssh_port || 'Not assigned' }}</dd></div>
+              <div v-if="selectedServer.ssh_enabled"><dt>SSH host</dt><dd>{{ selectedServer.ssh_host }}</dd></div>
+              <div v-if="selectedServer.ssh_enabled"><dt>SSH allowed from</dt><dd>{{ selectedServer.ssh_allowed_from || 'Any source' }}</dd></div>
               <div v-if="selectedServer.image === 'postgres'"><dt>Storage limit</dt><dd>{{ selectedServer.database_size_display || 'No limit' }}</dd></div>
               <div><dt>Container ID</dt><dd><code>{{ selectedServer.container_id || 'Not created' }}</code></dd></div>
               <div><dt>Created</dt><dd>{{ formatDate(selectedServer.created_at) }}</dd></div>
@@ -1542,7 +1615,7 @@ onBeforeUnmount(() => {
       </form>
     </div>
 
-    <div v-if="showCreate" class="modal-backdrop" @click.self="showCreate = false"><form class="create-modal" @submit.prevent="createServer"><div class="section-heading"><div><div class="eyebrow">New resource</div><h2>Provision server</h2></div><button type="button" class="close-button" aria-label="Close" @click="showCreate = false"><X :size="20" /></button></div><label>Server name<input v-model="createForm.name" required placeholder="edge-web-01"></label><label>Image<select v-model="createForm.image" @change="setFrameworkDefault"><option value="nginx">Nginx</option><option value="python">Python</option><option value="node">Node.js</option><option value="php">PHP / XAMPP</option><option value="postgres">PostgreSQL</option><option value="custom">Custom</option></select></label><p v-if="createForm.image === 'php'" class="framework-help">XAMPP installs Apache, MariaDB, PHP, Perl, and <code>nano</code>, then starts Apache automatically. Your PHP files live in <code>/opt/lampp/htdocs</code>.</p><label v-if="createForm.image === 'python'">Python framework<select v-model="createForm.framework"><option value="">Blank Python (runtime only)</option><option value="fastapi">FastAPI</option><option value="flask">Flask</option><option value="django">Django</option></select></label><label v-if="createForm.image === 'node'">Node.js framework<select v-model="createForm.framework"><option value="">Blank Node.js (runtime only)</option><option value="express">Express</option><option value="nextjs">Next.js</option></select></label><p v-if="['python', 'node'].includes(createForm.image)" class="framework-help"><template v-if="createForm.framework">A starter project is created in <code>/workspace</code>; framework dependencies install before the app starts.</template><template v-else>The runtime and <code>nano</code> are ready in the interactive shell, and a basic landing page remains available at the published URL.</template></p><label>Template<select v-model="createForm.template" required :disabled="!templates.length"><option value="" disabled>{{ templates.length ? 'Choose a resource preset' : 'No templates available' }}</option><option v-for="template in templates" :key="template.id" :value="template.id">{{ template.name }} - {{ template.cpu_limit }} CPU / {{ template.memory_mb }} MB</option></select></label><p v-if="!templates.length" class="error">No templates are available. Seed the built-in templates before provisioning.</p><label v-if="createForm.image === 'custom'">Custom image<input v-model="createForm.custom_image" placeholder="registry/image:tag"></label><template v-if="createForm.image === 'postgres'"><p class="postgres-help">Credentials are used to initialize this isolated PostgreSQL container. Leave the password blank to generate one; copy its connection URI from the detail page after provisioning.</p><label>Database name<input v-model="createForm.postgres_database" required pattern="[A-Za-z_][A-Za-z0-9_]*"></label><label>Database user<input v-model="createForm.postgres_username" required pattern="[A-Za-z_][A-Za-z0-9_]*"></label><label>Database password<input v-model="createForm.postgres_password" type="password" minlength="12" placeholder="Generated securely if left blank"></label><label>Database storage limit<select v-model="createForm.database_size_mb"><option :value="null">No limit</option><option :value="512">512 MB</option><option :value="1024">1 GB</option><option :value="5120">5 GB</option><option :value="10240">10 GB</option></select></label><p class="postgres-help">A selected limit constrains the PostgreSQL container writable layer, including its database files.</p></template><button class="primary-button" :disabled="!templates.length"><Plus :size="16" /> Provision container</button></form></div>
+    <div v-if="showCreate" class="modal-backdrop" @click.self="showCreate = false"><form class="create-modal" @submit.prevent="createServer"><div class="section-heading"><div><div class="eyebrow">New resource</div><h2>Provision server</h2></div><button type="button" class="close-button" aria-label="Close" @click="showCreate = false"><X :size="20" /></button></div><label>Server name<input v-model="createForm.name" required placeholder="edge-web-01"></label><label>Image<select v-model="createForm.image" @change="setFrameworkDefault"><option value="nginx">Nginx</option><option value="python">Python</option><option value="node">Node.js</option><option value="php">PHP / XAMPP</option><option value="postgres">PostgreSQL</option><option value="custom">Custom</option></select></label><p v-if="createForm.image === 'php'" class="framework-help">XAMPP installs Apache, MariaDB, PHP, Perl, and <code>nano</code>, then starts Apache automatically. Your PHP files live in <code>/opt/lampp/htdocs</code>.</p><label v-if="createForm.image === 'python'">Python framework<select v-model="createForm.framework"><option value="">Blank Python (runtime only)</option><option value="fastapi">FastAPI</option><option value="flask">Flask</option><option value="django">Django</option></select></label><label v-if="createForm.image === 'node'">Node.js framework<select v-model="createForm.framework"><option value="">Blank Node.js (runtime only)</option><option value="express">Express</option><option value="nextjs">Next.js</option></select></label><p v-if="['python', 'node'].includes(createForm.image)" class="framework-help"><template v-if="createForm.framework">A starter project is created in <code>/workspace</code>; framework dependencies install before the app starts.</template><template v-else>The runtime and <code>nano</code> are ready in the interactive shell, and a basic landing page remains available at the published URL.</template></p><label>Template<select v-model="createForm.template" required :disabled="!templates.length"><option value="" disabled>{{ templates.length ? 'Choose a resource preset' : 'No templates available' }}</option><option v-for="template in templates" :key="template.id" :value="template.id">{{ template.name }} - {{ template.cpu_limit }} CPU / {{ template.memory_mb }} MB</option></select></label><p v-if="!templates.length" class="error">No templates are available. Seed the built-in templates before provisioning.</p><label v-if="createForm.image === 'custom'">Custom image<input v-model="createForm.custom_image" placeholder="registry/image:tag"></label><template v-if="createForm.image === 'postgres'"><p class="postgres-help">Credentials are used to initialize this isolated PostgreSQL container. Leave the password blank to generate one; copy its connection URI from the detail page after provisioning.</p><label>Database name<input v-model="createForm.postgres_database" required pattern="[A-Za-z_][A-Za-z0-9_]*"></label><label>Database user<input v-model="createForm.postgres_username" required pattern="[A-Za-z_][A-Za-z0-9_]*"></label><label>Database password<input v-model="createForm.postgres_password" type="password" minlength="12" placeholder="Generated securely if left blank"></label><label>Database storage limit<select v-model="createForm.database_size_mb"><option :value="null">No limit</option><option :value="512">512 MB</option><option :value="1024">1 GB</option><option :value="5120">5 GB</option><option :value="10240">10 GB</option></select></label><p class="postgres-help">A selected limit constrains the PostgreSQL container writable layer, including its database files.</p></template><label class="ssh-toggle"><input v-model="createForm.ssh_enabled" type="checkbox">Enable SSH access</label><label v-if="createForm.ssh_enabled" class="ssh-key">Public key<textarea v-model="createForm.ssh_public_key" rows="3" spellcheck="false" placeholder="ssh-ed25519 AAAAC3NzaC1lZDI1… you@laptop"></textarea></label><label v-if="createForm.ssh_enabled">Allowed from<input v-model="createForm.ssh_allowed_from" spellcheck="false" placeholder="203.0.113.7, 198.51.100.0/24"></label><p v-if="createForm.ssh_enabled" class="framework-help">sshd runs inside the container with password sign-in disabled, so only this key can connect as <code>root</code>. Leave <em>Allowed from</em> blank to accept any source, or list the IP addresses and CIDR ranges you connect from — sshd rejects every other source before the key is offered. The <code>ssh</code> command appears on the server page; it uses <code>MINICLOUD_SSH_HOST</code>, so set it to an address your client can actually reach (a LAN address, or a static/DDNS name once the router forwards to this SSH port).</p><button class="primary-button" :disabled="!templates.length"><Plus :size="16" /> Provision container</button></form></div>
 
     <div class="toast-container">
       <TransitionGroup name="toast">

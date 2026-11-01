@@ -138,7 +138,7 @@ def handle_unhealthy_server(server, container_status, docker_service, error_mess
     open_incident(server, Incident.Type.DOWN)
     health_check.auto_restart_attempts += 1
     try:
-        docker_service.start_container(server.container_id)
+        docker_service.start_container(server.container_id, server=server)
     except DockerServiceError as error:
         health_check.last_error = str(error)
         if health_check.auto_restart_attempts >= settings.MINICLOUD_HEALTH_MAX_RESTART_ATTEMPTS:

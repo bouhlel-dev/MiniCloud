@@ -159,6 +159,10 @@ h3 { font-size: .92rem; }
 .database-connection { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin: 1rem 0; padding: 1rem; border: 1px solid #b8dfc5; background: #e8f5eb; }.database-connection div { min-width: 0; display: grid; gap: .45rem; }.database-connection span { color: #238b68; font: .62rem 'DM Mono', monospace; letter-spacing: .1em; }.database-connection code { overflow: auto; color: #17211f; font-size: .72rem; white-space: nowrap; }.database-connection button { flex: 0 0 auto; border: 1px solid #238b68; padding: .4rem .65rem; color: #238b68; background: transparent; font: .68rem 'DM Mono', monospace; }.postgres-help { color: #66736d; font-size: .76rem; line-height: 1.5; }
 .database-storage { display: grid; grid-template-columns: 1fr auto; gap: .35rem 1rem; margin: 1rem 0; padding: 1rem; border: 1px solid #dce4de; background: #fff; }.database-storage span { color: #66736d; font: .62rem 'DM Mono', monospace; letter-spacing: .1em; }.database-storage strong { color: #17211f; font-size: .9rem; }.database-storage small { grid-column: 1 / -1; color: #849089; font-size: .72rem; }
 .framework-help { color: #66736d; font-size: .76rem; line-height: 1.5; }.framework-help code { color: #238b68; font-family: 'DM Mono', monospace; }
+.ssh-toggle { display: flex; align-items: center; gap: .6rem; color: #101a26; font-size: .85rem; font-weight: 700; letter-spacing: 0; text-transform: none; cursor: pointer; }
+.ssh-toggle input { width: auto; padding: 0; accent-color: #1a63b8; }
+.ssh-key textarea { min-height: 4.5rem; border: 1px solid #d2dbe6; border-radius: 4px; background: #fff; padding: .75rem 1rem; color: #101a26; font: .74rem/1.5 'DM Mono', monospace; outline: none; resize: vertical; }
+.ssh-key textarea:focus { border-color: #2f86dd; box-shadow: 0 0 0 3px rgba(47,134,221,.15); }
 
 /* Provisioning indicator */
 .provisioning-indicator { background: #fff; border: 1px solid #dce4de; padding: 1.5rem; margin: 1.5rem 0; border-radius: 6px; }
@@ -205,6 +209,22 @@ h3 { font-size: .92rem; }
 .summary-connection code { min-width: 0; flex: 1; overflow: auto; white-space: nowrap; color: #17211f; font: .72rem 'DM Mono', monospace; }
 .summary-connection button { display: inline-flex; align-items: center; gap: .4rem; flex: 0 0 auto; border: 1px solid #238b68; padding: .4rem .6rem; background: transparent; color: #238b68; font: 700 .64rem 'DM Mono', monospace; }
 .summary-connection button:hover { background: #238b68; color: #fff; }
+.ssh-access { display: grid; gap: .6rem; padding: .85rem; border: 1px solid #d5dfeb; background: #f4f8fb; }
+.ssh-note { display: flex; align-items: flex-start; gap: .5rem; color: #606e7d; font-size: .74rem; line-height: 1.5; }
+.ssh-note code { color: #1a63b8; font-family: 'DM Mono', monospace; }
+.ssh-note.warning { color: #9d782e; }
+.ssh-allowlist { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: .5rem; }
+.ssh-allowlist label { display: grid; gap: .25rem; color: #606e7d; font-size: .66rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.ssh-allowlist input { min-width: 0; border: 1px solid #d2dbe6; border-radius: 4px; background: #fff; padding: .45rem .6rem; color: #101a26; font: .72rem 'DM Mono', monospace; outline: none; }
+.ssh-allowlist input:focus { border-color: #2f86dd; box-shadow: 0 0 0 3px rgba(47,134,221,.15); }
+.ssh-allowlist button { display: inline-flex; align-items: center; gap: .4rem; border: 1px solid #1a63b8; padding: .45rem .6rem; background: transparent; color: #1a63b8; font: 700 .64rem 'DM Mono', monospace; }
+.ssh-allowlist button:hover:not(:disabled) { background: #1a63b8; color: #fff; }
+.ssh-allowlist button:disabled { border-color: #cdd8e4; color: #828f9e; cursor: default; }
+.ssh-probe { padding: .55rem .7rem; border-left: 3px solid #cdd8e4; background: #fff; color: #606e7d; font: .72rem/1.5 'DM Mono', monospace; overflow-wrap: anywhere; }
+.ssh-probe.open { border-left-color: #1a63b8; color: #1a63b8; }
+.ssh-probe.not_ssh { border-left-color: #e6bb55; color: #9d782e; }
+.ssh-probe.refused, .ssh-probe.timeout, .ssh-probe.unresolved, .ssh-probe.unreachable, .ssh-probe.error { border-left-color: #ee765d; color: #a64837; }
+@media (max-width: 700px) { .ssh-allowlist { grid-template-columns: 1fr; } }
 .summary-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin: 0; }
 .summary-stats > div { display: grid; gap: .25rem; padding: .95rem 1.5rem; border-right: 1px solid #eef2ee; }
 

@@ -14,6 +14,7 @@ from servers.services import (
     ProvisioningError,
     QuotaExceededError,
     ServerServiceError,
+    check_ssh_reachability,
     delete_server,
     execute_server_command,
     provision_server,
@@ -63,9 +64,9 @@ class ServerViewSet(viewsets.ModelViewSet):
         server = self.get_object()
         serializer = self.get_serializer(server, data=request.data, partial=kwargs.pop("partial", False))
         serializer.is_valid(raise_exception=True)
-        allowed = {"name", "custom_image", "env_vars"}
+        allowed = {"name", "custom_image", "env_vars", "ssh_public_key", "ssh_allowed_from"}
         if set(serializer.validated_data) - allowed:
-            return Response({"detail": "Only name, custom_image, and env_vars can be updated."}, status=400)
+            return Response({"detail": "Only name, custom_image, env_vars, ssh_public_key and ssh_allowed_from can be updated."}, status=400)
         for field, value in serializer.validated_data.items():
             setattr(server, field, value)
         try:
@@ -73,6 +74,13 @@ class ServerViewSet(viewsets.ModelViewSet):
             server.save()
         except ValidationError as error:
             return Response(error.message_dict, status=status.HTTP_400_BAD_REQUEST)
+        if server.ssh_enabled and server.status == Server.Status.RUNNING and (
+            {"ssh_public_key", "ssh_allowed_from"} & set(serializer.validated_data)
+        ):
+            try:
+                DockerService().configure_ssh(server)
+            except DockerServiceError as error:
+                return Response({"detail": str(error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         return Response(self.get_serializer(server).data)
 
     def destroy(self, request, *args, **kwargs):
@@ -121,6 +129,10 @@ class ServerViewSet(viewsets.ModelViewSet):
         except ServerServiceError as error:
             return Response({"detail": str(error)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(result)
+
+    @action(detail=True, methods=["post"], url_path="ssh/check")
+    def check_ssh(self, request, pk=None):
+        return Response(check_ssh_reachability(self.get_object()))
 
     @action(detail=True, methods=["get"], url_path="database")
     def database_overview(self, request, pk=None):

@@ -1,3 +1,4 @@
+import socket
 import threading
 from urllib.parse import quote
 
@@ -82,13 +83,30 @@ def open_server_terminal(server, docker_service=None):
         raise ServerServiceError(str(error)) from error
 
 
-def provision_server(owner, *, name, image, custom_image, template, env_vars, framework="", database_size_mb=None, docker_service=None):
+def provision_server(owner, *, name, image, template, custom_image="", env_vars=None, framework="", database_size_mb=None, ssh_enabled=False, ssh_public_key="", ssh_allowed_from="", docker_service=None):
     port_service = docker_service or DockerService()
+    env_vars = env_vars or {}
+    if not ssh_enabled:
+        ssh_public_key = ""
+        ssh_allowed_from = ""
+    else:
+        try:
+            ssh_public_key = Server.parse_ssh_public_key(ssh_public_key)
+            ssh_allowed_from = Server.parse_ssh_allowed_from(ssh_allowed_from)
+        except ValidationError as error:
+            raise ProvisioningError("; ".join(error.messages)) from error
     with transaction.atomic():
         locked_owner = User.objects.select_for_update().get(pk=owner.pk)
         locked_template = ServerTemplate.objects.get(pk=template.pk)
         if not locked_owner.has_capacity_for(locked_template, image=image):
             raise QuotaExceededError("Your server, CPU, or memory quota has been reached.")
+
+        host_port = port_service.find_available_host_port()
+        ssh_port = None
+        if ssh_enabled:
+            # The application port is not published yet, so it is still free on
+            # the host; reserve it to avoid handing the same port to sshd.
+            ssh_port = port_service.find_available_host_port(reserved={host_port})
 
         server = Server(
             owner=locked_owner,
@@ -98,7 +116,11 @@ def provision_server(owner, *, name, image, custom_image, template, env_vars, fr
             database_size_mb=database_size_mb,
             custom_image=custom_image,
             template=locked_template,
-            host_port=port_service.find_available_host_port(),
+            host_port=host_port,
+            ssh_enabled=ssh_enabled,
+            ssh_port=ssh_port,
+            ssh_public_key=ssh_public_key,
+            ssh_allowed_from=ssh_allowed_from,
             env_vars=env_vars,
             provisioning_step=Server.ProvisioningStep.ALLOCATING_PORT,
         )
@@ -175,7 +197,11 @@ def start_server(server, docker_service=None):
             if server.status != Server.Status.STOPPED:
                 raise InvalidServerAction("Only stopped or failed servers can be started.")
             try:
-                docker_service.start_container(server.container_id, wait_for_php=(server.image == Server.Image.PHP))
+                docker_service.start_container(
+                    server.container_id,
+                    wait_for_php=(server.image == Server.Image.PHP),
+                    server=server,
+                )
             except DockerServiceError as error:
                 raise ServerServiceError(str(error)) from error
             server.transition_to(Server.Status.RUNNING)
@@ -207,10 +233,11 @@ def restart_server(server, docker_service=None):
         if server.status != Server.Status.RUNNING:
             raise InvalidServerAction("Only running or stopped servers can be restarted.")
         try:
-            docker_service.restart_container(server.container_id)
-            if server.image == Server.Image.PHP:
-                container = docker_service._get_container(server.container_id)
-                docker_service._wait_for_xampp_ready(container)
+            docker_service.restart_container(
+                server.container_id,
+                wait_for_php=(server.image == Server.Image.PHP),
+                server=server,
+            )
         except DockerServiceError as error:
             raise ServerServiceError(str(error)) from error
     return server
@@ -228,7 +255,84 @@ def delete_server(server, docker_service=None):
             except DockerServiceError as error:
                 raise ServerServiceError(str(error)) from error
         server.mark_deleted()
+        released = []
         if server.host_port is not None:
             server.host_port = None
-            server.save(update_fields=["host_port"])
+            released.append("host_port")
+        if server.ssh_port is not None:
+            server.ssh_port = None
+            released.append("ssh_port")
+        if released:
+            server.save(update_fields=released)
     return server
+
+
+def check_ssh_reachability(server, timeout=5.0):
+    """Connect to the advertised SSH endpoint and read the banner.
+
+    A router that refuses to hairpin its own public address back into the LAN
+    makes this fail even when the forward works for outside clients, so the
+    result is reported as state plus message and the caller decides how to warn.
+    """
+    result = {
+        "host": server.ssh_host,
+        "port": server.ssh_port,
+        "exposed": server.ssh_exposed,
+        "allowed_from": server.ssh_allowed_from,
+        "reachable": False,
+        "state": "disabled",
+        "message": "",
+    }
+    if not server.ssh_enabled or not server.ssh_port:
+        result["message"] = "SSH access is not enabled for this server."
+        return result
+    if server.status != Server.Status.RUNNING:
+        result["state"] = "stopped"
+        result["message"] = "The server is not running, so sshd is not listening yet."
+        return result
+
+    banner = ""
+    try:
+        with socket.create_connection((result["host"], server.ssh_port), timeout=timeout) as connection:
+            connection.settimeout(timeout)
+            try:
+                banner = connection.recv(128).decode("utf-8", "replace")
+            except OSError:
+                banner = ""
+    except socket.gaierror as error:
+        result["state"] = "unresolved"
+        result["message"] = f"{result['host']} does not resolve yet. Wait for the DDNS record to propagate, or set MINICLOUD_SSH_HOST to your public IP."
+        return _note_hairpin(result)
+    except ConnectionRefusedError:
+        result["state"] = "refused"
+        result["message"] = f"{result['host']}:{server.ssh_port} refused the connection. The forward is missing, or it points at the wrong machine or port."
+        return _note_hairpin(result)
+    except TimeoutError:
+        result["state"] = "timeout"
+        result["message"] = f"{result['host']}:{server.ssh_port} did not answer within {int(timeout)}s. Check the router's port forward and this machine's firewall."
+        return _note_hairpin(result)
+    except OSError as error:
+        result["state"] = "unreachable"
+        result["message"] = f"{result['host']}:{server.ssh_port} could not be reached: {error}."
+        return _note_hairpin(result)
+
+    first_line = banner.strip().split("\r\n")[0].split("\n")[0]
+    if first_line.startswith("SSH-"):
+        result["reachable"] = True
+        result["state"] = "open"
+        result["message"] = f"sshd answered with {first_line}."
+        return result
+
+    result["state"] = "not_ssh"
+    result["message"] = (
+        f"Something on {result['host']}:{server.ssh_port} accepted the connection but is not sshd"
+        + (f" (it said {first_line!r})." if first_line else ".")
+        + " The forward probably points at the application port instead of the SSH port."
+    )
+    return result
+
+
+def _note_hairpin(result):
+    if result["exposed"]:
+        result["message"] += " Routers rarely loop a forwarded port back to the LAN, so test again from outside your network before you conclude it is broken."
+    return result

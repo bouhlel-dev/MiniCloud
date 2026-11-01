@@ -108,6 +108,9 @@ MINICLOUD_DOCKER_TIMEOUT = int(os.getenv("MINICLOUD_DOCKER_TIMEOUT", "60"))
 MINICLOUD_PORT_RANGE_START = int(os.getenv("MINICLOUD_PORT_RANGE_START", "10000"))
 MINICLOUD_PORT_RANGE_END = int(os.getenv("MINICLOUD_PORT_RANGE_END", "11000"))
 MINICLOUD_PUBLIC_HOST = os.getenv("MINICLOUD_PUBLIC_HOST", "localhost")
+# Host advertised for SSH specifically, so a static or DDNS name can be used
+# for remote shell access without changing the URLs shown for the apps.
+MINICLOUD_SSH_HOST = os.getenv("MINICLOUD_SSH_HOST") or MINICLOUD_PUBLIC_HOST
 MINICLOUD_XAMPP_INSTALLER_URL = os.getenv(
     "MINICLOUD_XAMPP_INSTALLER_URL",
     "https://sourceforge.net/projects/xampp/files/XAMPP%20Linux/8.2.12/xampp-linux-x64-8.2.12-0-installer.run/download",

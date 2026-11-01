@@ -8,6 +8,7 @@ from textwrap import dedent
 import docker
 from docker.errors import APIError, DockerException, ImageNotFound, NotFound
 from django.conf import settings
+from django.core.exceptions import ValidationError
 
 from .models import Server
 
@@ -232,6 +233,46 @@ JS
             exit 127
         fi
     """
+    # Key-only access: the published port forwards to sshd on 22, root login is
+    # restricted to the owner's public key and password auth stays disabled so
+    # the container cannot be brute-forced from the network.
+    SSHD_SETUP_COMMAND = """
+        set -eu
+        if command -v sshd >/dev/null 2>&1; then
+            sshd_path=$(command -v sshd)
+        elif [ -x /usr/sbin/sshd ]; then
+            sshd_path=/usr/sbin/sshd
+        else
+            if command -v apk >/dev/null 2>&1; then
+                apk add --no-cache openssh-server
+            elif command -v apt-get >/dev/null 2>&1; then
+                export DEBIAN_FRONTEND=noninteractive
+                apt-get update
+                apt-get install -y --no-install-recommends openssh-server
+                rm -rf /var/lib/apt/lists/*
+            elif command -v dnf >/dev/null 2>&1; then
+                dnf install -y openssh-server
+            elif command -v yum >/dev/null 2>&1; then
+                yum install -y openssh-server
+            else
+                echo "No supported package manager was found to install OpenSSH." >&2
+                exit 127
+            fi
+            sshd_path=/usr/sbin/sshd
+        fi
+        mkdir -p /run/sshd /root/.ssh
+        echo {authorized_keys} | base64 -d > /root/.ssh/authorized_keys
+        chmod 700 /root/.ssh
+        chmod 600 /root/.ssh/authorized_keys
+        if [ ! -f /etc/ssh/ssh_host_ed25519_key ]; then
+            ssh-keygen -A
+        fi
+        if [ -f /run/sshd.pid ]; then
+            kill "$(cat /run/sshd.pid)" >/dev/null 2>&1 || true
+            sleep 1
+        fi
+        "$sshd_path" -o PermitRootLogin=prohibit-password -o PasswordAuthentication=no -o PubkeyAuthentication=yes -o UsePAM=no -o PermitEmptyPasswords=no -o KbdInteractiveAuthentication=no -o MaxAuthTries=3 -o LoginGraceTime=30 -o MaxStartups=10:30:60 -o ClientAliveInterval=300 -o ClientAliveCountMax=3
+    """
 
     def __init__(self, client=None):
         self._client = client
@@ -245,8 +286,8 @@ JS
                 raise DockerServiceError("Docker is unavailable. Check that the local Docker daemon is running.") from error
         return self._client
 
-    def find_available_host_port(self):
-        assigned_ports = self._assigned_host_ports()
+    def find_available_host_port(self, reserved=()):
+        assigned_ports = self._assigned_host_ports() | {int(port) for port in reserved if port}
         for port in range(settings.MINICLOUD_PORT_RANGE_START, settings.MINICLOUD_PORT_RANGE_END + 1):
             if port not in assigned_ports and self._is_locally_available(port):
                 return port
@@ -290,6 +331,10 @@ JS
         }
         if server.image == Server.Image.POSTGRES and server.database_size_mb:
             run_options["storage_opt"] = {"size": f"{server.database_size_mb}m"}
+        if server.ssh_enabled:
+            if not server.ssh_port:
+                raise DockerServiceError("An SSH host port is required before creating the container.")
+            run_options["ports"]["22/tcp"] = server.ssh_port
         if server.image == Server.Image.PHP:
             self._update_step(server, Server.ProvisioningStep.DOWNLOADING_XAMPP)
             run_options["command"] = ["sh", "-c", self._php_xampp_command()]
@@ -344,14 +389,25 @@ JS
             try:
                 self._install_nano(container)
             except DockerServiceError:
-                try:
-                    container.remove(force=True)
-                except DockerException:
-                    pass
+                self._discard_container(container)
                 raise
         if server.image == Server.Image.PHP:
             self._wait_for_xampp_ready(container, server=server)
+        if server.ssh_enabled:
+            self._update_step(server, Server.ProvisioningStep.CONFIGURING)
+            try:
+                self.configure_ssh(server, container)
+            except DockerServiceError:
+                self._discard_container(container)
+                raise
         return container.id
+
+    @staticmethod
+    def _discard_container(container):
+        try:
+            container.remove(force=True)
+        except DockerException:
+            pass
 
     @staticmethod
     def _live_page(server):
@@ -423,17 +479,27 @@ JS
             return f"The XAMPP container stopped before it became ready (exit code {exit_code}). Check the container logs for details."
         return "The XAMPP container stopped before it became ready. Check the container logs for details."
 
-    def start_container(self, container_id, wait_for_php=False):
+    def start_container(self, container_id, wait_for_php=False, server=None):
         self._run_container_action(container_id, "start")
-        if wait_for_php:
-            container = self._get_container(container_id)
-            self._wait_for_xampp_ready(container)
+        self._await_startup(container_id, wait_for_php, server)
 
     def stop_container(self, container_id):
         self._run_container_action(container_id, "stop", timeout=10)
 
-    def restart_container(self, container_id):
+    def restart_container(self, container_id, wait_for_php=False, server=None):
         self._run_container_action(container_id, "restart", timeout=10)
+        self._await_startup(container_id, wait_for_php, server)
+
+    def _await_startup(self, container_id, wait_for_php, server):
+        # sshd is not the container entrypoint, so every start needs to bring it back up.
+        needs_ssh = server is not None and server.ssh_enabled
+        if not wait_for_php and not needs_ssh:
+            return
+        container = self._get_container(container_id)
+        if wait_for_php:
+            self._wait_for_xampp_ready(container)
+        if needs_ssh:
+            self.configure_ssh(server, container)
 
     def remove_container(self, container_id):
         try:
@@ -595,11 +661,41 @@ JS
         if result.exit_code != 0:
             raise DockerServiceError("Nano could not be installed in the container.")
 
+    def configure_ssh(self, server, container=None):
+        """Install sshd if needed, publish the owner's key and (re)start the daemon."""
+        container = container or self._get_container(server.container_id)
+        try:
+            public_key = Server.parse_ssh_public_key(server.ssh_public_key)
+            allowed_from = Server.parse_ssh_allowed_from(server.ssh_allowed_from)
+        except ValidationError as error:
+            raise DockerServiceError("; ".join(error.messages)) from error
+        # authorized_keys options are checked before the key is offered, so a
+        # port-forwarded daemon never even tries to authenticate other sources.
+        key_line = f'from="{allowed_from}" {public_key}' if allowed_from else public_key
+        authorized_keys = base64.b64encode(f"{key_line}\n".encode("utf-8")).decode("ascii")
+        script = dedent(self.SSHD_SETUP_COMMAND).strip().format(authorized_keys=authorized_keys)
+        try:
+            result = container.exec_run(
+                ["sh", "-c", script],
+                stdout=True,
+                stderr=True,
+                user="root",
+            )
+        except DockerException as error:
+            raise DockerServiceError("Docker could not start the SSH server in the container.") from error
+        if result.exit_code != 0:
+            raise DockerServiceError("The SSH server could not be started in the container. Check the server logs.")
+
     def _assigned_host_ports(self):
         assigned_ports = set(
             Server.objects.exclude(status=Server.Status.DELETED)
             .exclude(host_port__isnull=True)
             .values_list("host_port", flat=True)
+        )
+        assigned_ports |= set(
+            Server.objects.exclude(status=Server.Status.DELETED)
+            .exclude(ssh_port__isnull=True)
+            .values_list("ssh_port", flat=True)
         )
         try:
             containers = self.client.containers.list(all=True)
