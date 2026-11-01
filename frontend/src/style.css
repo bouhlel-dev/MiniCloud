@@ -208,6 +208,7 @@ h3 { font-size: .92rem; }
 .summary-connection code { min-width: 0; flex: 1; overflow: auto; white-space: nowrap; color: #101a26; font: .72rem 'DM Mono', monospace; }
 .summary-connection button { display: inline-flex; align-items: center; gap: .4rem; flex: 0 0 auto; border: 1px solid #1a63b8; padding: .4rem .6rem; background: transparent; color: #1a63b8; font: 700 .64rem 'DM Mono', monospace; }
 .summary-connection button:hover { background: #1a63b8; color: #fff; }
+.ssh-panel { display: grid; gap: .75rem; }
 .ssh-access { display: grid; gap: .6rem; padding: .85rem; border: 1px solid #d5dfeb; background: #f4f8fb; }
 .ssh-note { display: flex; align-items: flex-start; gap: .5rem; color: #606e7d; font-size: .74rem; line-height: 1.5; }
 .ssh-note code { color: #1a63b8; font-family: 'DM Mono', monospace; }

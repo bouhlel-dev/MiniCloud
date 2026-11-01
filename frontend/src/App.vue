@@ -622,6 +622,7 @@ async function openDetailPanel(panel) {
   if (panel === 'shell' && server.status !== 'running') return
   if (panel === 'database' && !(server.image === 'postgres' && server.status === 'running')) return
   if (panel === 'logs' && !['creating', 'running'].includes(server.status)) return
+  if (panel === 'ssh' && !server.ssh_enabled) return
   detailPanel.value = panel
   await nextTick()
   if (panel === 'shell') openTerminal()
@@ -1361,55 +1362,6 @@ onBeforeUnmount(() => {
               {{ copiedField === 'connection' ? 'Copied' : 'Copy URI' }}
             </button>
           </div>
-          <div v-if="selectedServer.ssh_command" class="summary-connection">
-            <code>{{ selectedServer.ssh_command }}</code>
-            <button type="button" @click="copyText(selectedServer.ssh_command, 'ssh')">
-              <Check v-if="copiedField === 'ssh'" :size="13" /><Copy v-else :size="13" />
-              {{ copiedField === 'ssh' ? 'Copied' : 'Copy SSH' }}
-            </button>
-          </div>
-          <div v-if="selectedServer.ssh_enabled" class="ssh-access">
-            <p v-if="selectedServer.ssh_exposed && !selectedServer.ssh_allowed_from" class="ssh-note warning"><ShieldAlert :size="13" />{{ selectedServer.ssh_host }} is reachable from the internet and every source is accepted until you list the addresses you connect from.</p>
-            <p v-else-if="selectedServer.ssh_exposed" class="ssh-note"><Info :size="13" />{{ selectedServer.ssh_host }} is reachable from the internet; your router has to forward to port {{ selectedServer.ssh_port }}.</p>
-            <p v-else class="ssh-note"><Info :size="13" />SSH host <code>{{ selectedServer.ssh_host }}</code> is a local address, so it only works where this machine is reachable.</p>
-            <div class="ssh-allowlist">
-              <label>Allowed from<input v-model="sshAllowlistDraft" spellcheck="false" placeholder="any source"></label>
-              <button type="button" :disabled="sshAllowlistSaving || sshAllowlistDraft === (selectedServer.ssh_allowed_from || '')" @click="saveSshAllowlist"><RefreshCw v-if="sshAllowlistSaving" class="spin" :size="13" />{{ sshAllowlistSaving ? 'Saving…' : 'Save allowlist' }}</button>
-              <button type="button" :disabled="sshProbing" @click="checkSshReachability"><RefreshCw v-if="sshProbing" class="spin" :size="13" /><Network v-else :size="13" />Check reachability</button>
-            </div>
-            <p v-if="sshAllowlistError" class="error">{{ sshAllowlistError }}</p>
-            <p v-if="sshProbe" :class="['ssh-probe', sshProbe.state]">{{ sshProbe.message }}</p>
-            <div class="ssh-keys">
-              <div class="ssh-keys-head"><span>Key pairs</span><button type="button" :disabled="sshKeysLoading" @click="loadSshKeys(selectedServer.id)"><RefreshCw v-if="sshKeysLoading" class="spin" :size="13" />Refresh</button></div>
-              <p v-if="!sshKeys.length && !sshKeysLoading" class="ssh-note"><Info :size="13" />No key is published, so sshd accepts nobody. Generate one below.</p>
-              <ul v-else class="ssh-key-list">
-                <li v-for="key in sshKeys" :key="key.id">
-                  <div class="ssh-key-main"><strong>{{ key.label }}</strong><small>{{ key.key_type }} · <code>{{ key.fingerprint }}</code></small></div>
-                  <small class="ssh-key-sources">{{ key.sources || 'any source' }}</small>
-                  <button type="button" class="ssh-key-remove" :disabled="sshKeyRemoving === key.id" @click="removeSshKey(key)"><Trash2 v-if="sshKeyRemoving !== key.id" :size="13" /><RefreshCw v-else class="spin" :size="13" />{{ sshKeyRemoving === key.id ? 'Removing…' : 'Remove' }}</button>
-                </li>
-              </ul>
-              <p v-if="sshKeyError" class="error">{{ sshKeyError }}</p>
-              <div v-if="!generatedKey" class="ssh-key-new">
-                <div class="ssh-key-fields">
-                  <label>Device<input v-model="sshKeyForm.label" maxlength="60" spellcheck="false" placeholder="work-laptop"></label>
-                  <label>Allowed from<input v-model="sshKeyForm.allowed_from" spellcheck="false" placeholder="inherit the server allowlist"></label>
-                </div>
-                <label>Public key<textarea v-model="sshKeyForm.public_key" rows="2" spellcheck="false" placeholder="ssh-ed25519 AAAAC3NzaC1lZDI1… you@laptop — leave blank and MiniCloud generates the pair"></textarea></label>
-                <div class="ssh-key-actions"><button type="button" :disabled="sshKeySaving || !sshKeyForm.label.trim()" @click="addSshKey"><RefreshCw v-if="sshKeySaving" class="spin" :size="13" /><KeyRound v-else :size="13" />{{ sshKeyForm.public_key.trim() ? 'Add public key' : 'Generate key pair' }}</button></div>
-              </div>
-              <div v-else class="ssh-secret">
-                <p class="ssh-note warning"><ShieldAlert :size="13" />This private key for {{ generatedKey.label }} is shown once. MiniCloud keeps no copy, so save it now or lose it.</p>
-                <textarea readonly rows="9" spellcheck="false" aria-label="Private key" @focus="$event.target.select()">{{ generatedKey.private_key }}</textarea>
-                <div class="ssh-secret-actions">
-                  <button type="button" @click="copyText(generatedKey.private_key, 'private')"><Check v-if="copiedField === 'private'" :size="13" /><Copy v-else :size="13" />{{ copiedField === 'private' ? 'Copied' : 'Copy' }}</button>
-                  <button type="button" @click="downloadPrivateKey"><Download :size="13" />Download {{ sshKeyFileName }}</button>
-                  <button type="button" class="done" @click="generatedKey = null">Done</button>
-                </div>
-                <p class="ssh-note"><Info :size="13" />Sign in with <code>ssh -i {{ sshKeyFileName }} -p {{ selectedServer.ssh_port }} root@{{ selectedServer.ssh_host }}</code></p>
-              </div>
-            </div>
-          </div>
         </div>
         <dl class="summary-stats">
           <div><dt>CPU</dt><dd>{{ cpuUsage }}<i>%</i></dd><small>of {{ selectedServer.effective_cpu_limit ?? selectedServer.template_cpu_limit }} cores</small></div>
@@ -1426,6 +1378,7 @@ onBeforeUnmount(() => {
         <div class="dock-tabs" role="tablist" aria-label="Server tools">
           <span class="dock-label">Tools</span>
           <button type="button" role="tab" :aria-selected="detailPanel === 'shell'" :class="{ active: detailPanel === 'shell' }" :disabled="selectedServer.status !== 'running'" @click="openDetailPanel('shell')"><SquareTerminal :size="14" /> Shell</button>
+          <button v-if="selectedServer.ssh_enabled" type="button" role="tab" :aria-selected="detailPanel === 'ssh'" :class="{ active: detailPanel === 'ssh' }" @click="openDetailPanel('ssh')"><KeyRound :size="14" /> SSH</button>
           <button v-if="selectedServer.image === 'postgres'" type="button" role="tab" :aria-selected="detailPanel === 'database'" :class="{ active: detailPanel === 'database' }" :disabled="selectedServer.status !== 'running'" @click="openDetailPanel('database')"><Database :size="14" /> Database</button>
           <button type="button" role="tab" :aria-selected="detailPanel === 'logs'" :class="{ active: detailPanel === 'logs' }" :disabled="!['creating', 'running'].includes(selectedServer.status)" @click="openDetailPanel('logs')"><ScrollText :size="14" /> Logs <i v-if="logsStatus === 'Connected'" class="dock-live-dot"></i></button>
           <button type="button" role="tab" :aria-selected="detailPanel === 'details'" :class="{ active: detailPanel === 'details' }" @click="openDetailPanel('details')"><Info :size="14" /> Details <b v-if="selectedServer.open_incidents_count">{{ selectedServer.open_incidents_count }}</b></button>
@@ -1587,6 +1540,58 @@ onBeforeUnmount(() => {
             <span class="terminal-state">{{ terminalStatus }}<button v-if="selectedServer.status === 'running' && terminalStatus !== 'Connected'" type="button" class="terminal-reconnect" @click="reconnectTerminal">Reconnect</button></span>
           </div>
           <div ref="terminalHost" class="real-terminal-body" aria-label="Interactive container terminal"></div>
+        </div>
+
+        <div v-else-if="detailPanel === 'ssh'" class="dock-panel ssh-panel">
+          <div v-if="selectedServer.ssh_command" class="summary-connection">
+            <code>{{ selectedServer.ssh_command }}</code>
+            <button type="button" @click="copyText(selectedServer.ssh_command, 'ssh')">
+              <Check v-if="copiedField === 'ssh'" :size="13" /><Copy v-else :size="13" />
+              {{ copiedField === 'ssh' ? 'Copied' : 'Copy command' }}
+            </button>
+          </div>
+          <div class="ssh-access">
+            <p v-if="selectedServer.ssh_exposed && !selectedServer.ssh_allowed_from" class="ssh-note warning"><ShieldAlert :size="13" />{{ selectedServer.ssh_host }} is reachable from the internet and every source is accepted until you list the addresses you connect from.</p>
+            <p v-else-if="selectedServer.ssh_exposed" class="ssh-note"><Info :size="13" />{{ selectedServer.ssh_host }} is reachable from the internet; your router has to forward to port {{ selectedServer.ssh_port }}.</p>
+            <p v-else class="ssh-note"><Info :size="13" />SSH host <code>{{ selectedServer.ssh_host }}</code> is a local address, so it only works where this machine is reachable.</p>
+            <div class="ssh-allowlist">
+              <label>Allowed from<input v-model="sshAllowlistDraft" spellcheck="false" placeholder="any source"></label>
+              <button type="button" :disabled="sshAllowlistSaving || sshAllowlistDraft === (selectedServer.ssh_allowed_from || '')" @click="saveSshAllowlist"><RefreshCw v-if="sshAllowlistSaving" class="spin" :size="13" />{{ sshAllowlistSaving ? 'Saving…' : 'Save allowlist' }}</button>
+              <button type="button" :disabled="sshProbing" @click="checkSshReachability"><RefreshCw v-if="sshProbing" class="spin" :size="13" /><Network v-else :size="13" />Check reachability</button>
+            </div>
+            <p v-if="sshAllowlistError" class="error">{{ sshAllowlistError }}</p>
+            <p v-if="sshProbe" :class="['ssh-probe', sshProbe.state]">{{ sshProbe.message }}</p>
+            <div class="ssh-keys">
+              <div class="ssh-keys-head"><span>Key pairs</span><button type="button" :disabled="sshKeysLoading" @click="loadSshKeys(selectedServer.id)"><RefreshCw v-if="sshKeysLoading" class="spin" :size="13" />Refresh</button></div>
+              <p v-if="!sshKeys.length && !sshKeysLoading" class="ssh-note"><Info :size="13" />No key is published, so sshd accepts nobody. Generate one below.</p>
+              <ul v-else class="ssh-key-list">
+                <li v-for="key in sshKeys" :key="key.id">
+                  <div class="ssh-key-main"><strong>{{ key.label }}</strong><small>{{ key.key_type }} · <code>{{ key.fingerprint }}</code></small></div>
+                  <small class="ssh-key-sources">{{ key.sources || 'any source' }}</small>
+                  <button type="button" class="ssh-key-remove" :disabled="sshKeyRemoving === key.id" @click="removeSshKey(key)"><Trash2 v-if="sshKeyRemoving !== key.id" :size="13" /><RefreshCw v-else class="spin" :size="13" />{{ sshKeyRemoving === key.id ? 'Removing…' : 'Remove' }}</button>
+                </li>
+              </ul>
+              <p v-if="sshKeyError" class="error">{{ sshKeyError }}</p>
+              <div v-if="!generatedKey" class="ssh-key-new">
+                <div class="ssh-key-fields">
+                  <label>Device<input v-model="sshKeyForm.label" maxlength="60" spellcheck="false" placeholder="work-laptop"></label>
+                  <label>Allowed from<input v-model="sshKeyForm.allowed_from" spellcheck="false" placeholder="inherit the server allowlist"></label>
+                </div>
+                <label>Public key<textarea v-model="sshKeyForm.public_key" rows="2" spellcheck="false" placeholder="ssh-ed25519 AAAAC3NzaC1lZDI1… you@laptop — leave blank and MiniCloud generates the pair"></textarea></label>
+                <div class="ssh-key-actions"><button type="button" :disabled="sshKeySaving || !sshKeyForm.label.trim()" @click="addSshKey"><RefreshCw v-if="sshKeySaving" class="spin" :size="13" /><KeyRound v-else :size="13" />{{ sshKeyForm.public_key.trim() ? 'Add public key' : 'Generate key pair' }}</button></div>
+              </div>
+              <div v-else class="ssh-secret">
+                <p class="ssh-note warning"><ShieldAlert :size="13" />This private key for {{ generatedKey.label }} is shown once. MiniCloud keeps no copy, so save it now or lose it.</p>
+                <textarea readonly rows="9" spellcheck="false" aria-label="Private key" @focus="$event.target.select()">{{ generatedKey.private_key }}</textarea>
+                <div class="ssh-secret-actions">
+                  <button type="button" @click="copyText(generatedKey.private_key, 'private')"><Check v-if="copiedField === 'private'" :size="13" /><Copy v-else :size="13" />{{ copiedField === 'private' ? 'Copied' : 'Copy' }}</button>
+                  <button type="button" @click="downloadPrivateKey"><Download :size="13" />Download {{ sshKeyFileName }}</button>
+                  <button type="button" class="done" @click="generatedKey = null">Done</button>
+                </div>
+                <p class="ssh-note"><Info :size="13" />Sign in with <code>ssh -i {{ sshKeyFileName }} -p {{ selectedServer.ssh_port }} root@{{ selectedServer.ssh_host }}</code></p>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div v-else-if="detailPanel === 'logs'" class="dock-panel logs-panel">
