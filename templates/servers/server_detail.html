@@ -85,7 +85,7 @@
   </div>
   <div class="dashboard-card bg-white p-4 mb-3"><div class="d-flex justify-content-between align-items-center mb-3"><h2 class="h5 mb-0">Incidents</h2><span class="small text-muted">Most recent first</span></div>{% if incidents %}<div class="list-group list-group-flush">{% for incident in incidents %}<div class="list-group-item px-0 d-flex justify-content-between align-items-center"><div><strong>{{ incident.get_type_display }}</strong><div class="small text-muted">Opened {{ incident.opened_at|date:"M j, Y H:i" }}</div></div><span class="badge {% if incident.status == 'open' %}text-bg-danger{% else %}text-bg-success{% endif %}">{{ incident.get_status_display }}</span></div>{% endfor %}</div>{% else %}<p class="text-muted mb-0">No incidents recorded for this server.</p>{% endif %}</div>
   <div class="row g-3 mb-3">
-    <div class="col-lg-8"><div class="dashboard-card bg-dark text-light p-4 h-100"><div class="d-flex justify-content-between align-items-center mb-3"><h2 class="h5 mb-0">Live logs</h2><span class="small text-secondary" id="logs-connection">Connecting...</span></div><pre id="container-logs" class="font-mono small mb-0" style="height: 220px; overflow: auto; white-space: pre-wrap; color: #c9f2df;">Waiting for container output...</pre></div></div>
+    <div class="col-lg-8"><div class="dashboard-card bg-dark text-light p-4 h-100"><div class="d-flex justify-content-between align-items-center mb-3"><h2 class="h5 mb-0">Live logs</h2><span class="small text-secondary" id="logs-connection">Connecting...</span></div><pre id="container-logs" class="font-mono small mb-0" style="height: 220px; overflow: auto; white-space: pre-wrap; color: #bfdcf7;">Waiting for container output...</pre></div></div>
     <div class="col-lg-4"><div class="dashboard-card bg-white p-4 h-100"><h2 class="h5 mb-3">Live feed</h2><p class="small text-muted">WebSocket connection status</p><div class="d-flex align-items-center gap-2"><span class="status-dot" id="socket-dot"></span><span id="socket-status">Connecting to telemetry</span></div><p class="small text-muted mt-3 mb-0">Metrics and logs update independently from the background collector.</p></div></div>
   </div>
   <div class="d-flex flex-wrap gap-2">
@@ -115,9 +115,9 @@
         type: "line",
         data: { labels: chartData.map(point => new Date(point.timestamp).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"})), datasets: [
           { label: "CPU %", data: chartData.map(point => point.cpu_percent), borderColor: "#ee765d", backgroundColor: "rgba(238,118,93,.12)", fill: true, tension: .35, pointRadius: 0 },
-          { label: "Memory MB", data: chartData.map(point => point.memory_mb), borderColor: "#238b68", backgroundColor: "rgba(35,139,104,.08)", fill: true, tension: .35, pointRadius: 0 }
+          { label: "Memory MB", data: chartData.map(point => point.memory_mb), borderColor: "#1a63b8", backgroundColor: "rgba(26,99,184,.08)", fill: true, tension: .35, pointRadius: 0 }
         ]},
-        options: { responsive: true, maintainAspectRatio: false, interaction: { mode: "index", intersect: false }, scales: { y: { beginAtZero: true, grid: { color: "#edf1ed" } }, x: { grid: { display: false } } }, plugins: { legend: { position: "bottom", labels: { usePointStyle: true, boxWidth: 7 } } } }
+        options: { responsive: true, maintainAspectRatio: false, interaction: { mode: "index", intersect: false }, scales: { y: { beginAtZero: true, grid: { color: "#eaeff6" } }, x: { grid: { display: false } } }, plugins: { legend: { position: "bottom", labels: { usePointStyle: true, boxWidth: 7 } } } }
       });
       const updated = document.getElementById("metric-updated");
       async function refreshMetrics() {
@@ -162,7 +162,7 @@
       const terminalHost = document.getElementById("container-terminal");
       const terminalConnection = document.getElementById("terminal-connection");
       if (terminalHost && "{{ server.status }}" === "running" && window.Terminal && window.FitAddon) {
-        const terminal = new Terminal({ cursorBlink: true, fontFamily: "DM Mono, monospace", fontSize: 13, theme: { background: "#212529", foreground: "#d8f3e4", cursor: "#c9f2df" } });
+        const terminal = new Terminal({ cursorBlink: true, fontFamily: "DM Mono, monospace", fontSize: 13, theme: { background: "#212529", foreground: "#d3e9fb", cursor: "#bfdcf7" } });
         const fitAddon = new FitAddon.FitAddon();
         terminal.loadAddon(fitAddon); terminal.open(terminalHost); fitAddon.fit();
         const terminalSocket = new WebSocket(`${protocol}//${window.location.host}/ws/servers/{{ server.pk }}/terminal/`);

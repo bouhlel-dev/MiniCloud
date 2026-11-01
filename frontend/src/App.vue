@@ -32,6 +32,9 @@ const lifecycleAction = ref('')
 const error = ref('')
 const loginError = ref('')
 const showCreate = ref(false)
+const createDialog = ref(null)
+const createSubmitting = ref(false)
+const createError = ref('')
 const terminalHost = ref(null)
 const terminalStatus = ref('Offline')
 const terminalPath = ref('Resolving path…')
@@ -947,7 +950,7 @@ function terminalCloseMessage(code) {
 function openTerminal() {
   if (!selectedServer.value || selectedServer.value.status !== 'running' || detailPanel.value !== 'shell' || !terminalHost.value || !token.value || terminalSocket) return
   disposeTerminalView()
-  const activeTerminal = new Terminal({ cursorBlink: true, fontFamily: 'DM Mono, monospace', fontSize: 13, theme: { background: '#0f1714', foreground: '#f0fff4', cursor: '#c9f2df' } })
+  const activeTerminal = new Terminal({ cursorBlink: true, fontFamily: 'DM Mono, monospace', fontSize: 13, theme: { background: '#0a1220', foreground: '#e9f3fd', cursor: '#bfdcf7' } })
   terminal = activeTerminal
   const serverId = selectedServer.value.id
   const fitAddon = new FitAddon()
@@ -1013,7 +1016,23 @@ function openTerminal() {
   terminalResizeObserver.observe(terminalHost.value)
 }
 
+function openCreateModal() {
+  createError.value = ''
+  createSubmitting.value = false
+  showCreate.value = true
+  nextTick(() => createDialog.value?.focus())
+}
+
+function closeCreateModal() {
+  if (createSubmitting.value) return
+  showCreate.value = false
+  createError.value = ''
+}
+
 async function createServer() {
+  if (createSubmitting.value) return
+  createSubmitting.value = true
+  createError.value = ''
   try {
     const payload = { ...createForm.value, env_vars: { ...createForm.value.env_vars } }
     if (payload.image === 'postgres') {
@@ -1033,7 +1052,8 @@ async function createServer() {
     createForm.value = { name: '', image: 'nginx', framework: '', database_size_mb: null, template: templates.value[0]?.id || '', custom_image: '', env_vars: {}, postgres_database: 'minicloud', postgres_username: 'minicloud', postgres_password: '', ssh_enabled: false, ssh_public_key: '', ssh_allowed_from: '' }
     await loadDashboard()
     if (created?.id) await selectServer(created.id)
-  } catch (err) { error.value = err.message }
+  } catch (err) { createError.value = err.message }
+  finally { createSubmitting.value = false }
 }
 
 function openIncidentModal() {
@@ -1189,7 +1209,7 @@ onBeforeUnmount(() => {
     </aside>
 
     <section class="workspace">
-      <header v-if="activeTab === 'overview'"><div><button v-if="showDetail" class="back-button" @click="closeDetail"><ArrowLeft :size="15" /> All servers</button><div class="eyebrow">{{ showDetail ? 'Server / details' : 'Workspace / overview' }}</div><h1>{{ showDetail ? selectedServer?.name : `Good to see you, ${username}.` }}</h1><p>{{ showDetail ? 'Inspect telemetry and work directly inside this container.' : 'Here is the pulse of your local infrastructure.' }}</p></div><button v-if="!showDetail" class="primary-button" @click="showCreate = true"><Plus :size="16" /> Provision server</button></header>
+      <header v-if="activeTab === 'overview'"><div><button v-if="showDetail" class="back-button" @click="closeDetail"><ArrowLeft :size="15" /> All servers</button><div class="eyebrow">{{ showDetail ? 'Server / details' : 'Workspace / overview' }}</div><h1>{{ showDetail ? selectedServer?.name : `Good to see you, ${username}.` }}</h1><p>{{ showDetail ? 'Inspect telemetry and work directly inside this container.' : 'Here is the pulse of your local infrastructure.' }}</p></div><button v-if="!showDetail" class="primary-button" @click="openCreateModal"><Plus :size="16" /> Provision server</button></header>
       
       <header v-else-if="activeTab === 'notifications'">
         <div>
@@ -1217,7 +1237,7 @@ onBeforeUnmount(() => {
       <p v-if="error" class="notice error">{{ error }}</p>
 
       <template v-if="activeTab === 'overview'">
-        <section class="stats-grid"><article><span class="stat-label">Total servers</span><strong>{{ servers.length.toString().padStart(2, '0') }}</strong><small>Provisioned workloads</small></article><article><span class="stat-label">Running now</span><strong>{{ runningCount.toString().padStart(2, '0') }}</strong><small class="green"><CircleDot :size="11" /> Operational</small></article><article><span class="stat-label">Allocated memory</span><strong>{{ totalMemory }}<i> MB</i></strong><small>Across active limits</small></article><article><span class="stat-label">System health</span><strong class="green">Good</strong><small class="green"><CircleDot :size="11" /> All systems nominal</small></article></section>
+        <section class="stats-grid"><article><span class="stat-label">Total servers</span><strong>{{ servers.length.toString().padStart(2, '0') }}</strong><small>Provisioned workloads</small></article><article><span class="stat-label">Running now</span><strong>{{ runningCount.toString().padStart(2, '0') }}</strong><small class="accent"><CircleDot :size="11" /> Operational</small></article><article><span class="stat-label">Allocated memory</span><strong>{{ totalMemory }}<i> MB</i></strong><small>Across active limits</small></article><article><span class="stat-label">System health</span><strong class="accent">Good</strong><small class="accent"><CircleDot :size="11" /> All systems nominal</small></article></section>
 
         <section v-if="!showDetail" class="content-grid"><div class="server-section"><div class="section-heading"><div><div class="eyebrow">Managed resources</div><h2>Your servers</h2></div>
       <div class="db-header-actions">
@@ -1563,7 +1583,7 @@ onBeforeUnmount(() => {
         <div v-if="detailPanel === 'shell'" class="dock-panel terminal-panel">
           <div class="terminal-bar">
             <span class="terminal-lights"><i></i><i></i><i></i></span>
-            <span>{{ terminalTitle }}</span>
+            <span class="terminal-title">{{ terminalTitle }}</span>
             <span class="terminal-state">{{ terminalStatus }}<button v-if="selectedServer.status === 'running' && terminalStatus !== 'Connected'" type="button" class="terminal-reconnect" @click="reconnectTerminal">Reconnect</button></span>
           </div>
           <div ref="terminalHost" class="real-terminal-body" aria-label="Interactive container terminal"></div>
@@ -1676,14 +1696,14 @@ onBeforeUnmount(() => {
     </div>
 
     <div v-if="showIncidentModal" class="modal-backdrop" @click.self="closeIncidentModal">
-      <form class="incident-modal" role="dialog" aria-modal="true" aria-labelledby="incident-title" tabindex="-1"
+      <form ref="incidentDialog" class="dialog-modal" role="dialog" aria-modal="true" aria-labelledby="incident-title" tabindex="-1"
             @submit.prevent="triggerIncident" @keydown.esc="closeIncidentModal">
-        <div class="incident-head section-heading">
+        <div class="dialog-head section-heading">
           <div><div class="eyebrow">Monitoring sandbox</div><h2 id="incident-title">Trigger an incident</h2></div>
           <button type="button" class="close-button" aria-label="Close" @click="closeIncidentModal"><X :size="20" /></button>
         </div>
 
-        <div class="incident-body">
+        <div class="dialog-body">
           <div class="incident-target">
             <div class="incident-target-icon"><Box :size="15" /></div>
             <div class="incident-target-body">
@@ -1728,7 +1748,7 @@ onBeforeUnmount(() => {
       </form>
     </div>
 
-    <div v-if="showCreate" class="modal-backdrop" @click.self="showCreate = false"><form class="create-modal" @submit.prevent="createServer"><div class="section-heading"><div><div class="eyebrow">New resource</div><h2>Provision server</h2></div><button type="button" class="close-button" aria-label="Close" @click="showCreate = false"><X :size="20" /></button></div><label>Server name<input v-model="createForm.name" required placeholder="edge-web-01"></label><label>Image<select v-model="createForm.image" @change="setFrameworkDefault"><option value="nginx">Nginx</option><option value="python">Python</option><option value="node">Node.js</option><option value="php">PHP / XAMPP</option><option value="postgres">PostgreSQL</option><option value="custom">Custom</option></select></label><p v-if="createForm.image === 'php'" class="framework-help">XAMPP installs Apache, MariaDB, PHP, Perl, and <code>nano</code>, then starts Apache automatically. Your PHP files live in <code>/opt/lampp/htdocs</code>.</p><label v-if="createForm.image === 'python'">Python framework<select v-model="createForm.framework"><option value="">Blank Python (runtime only)</option><option value="fastapi">FastAPI</option><option value="flask">Flask</option><option value="django">Django</option></select></label><label v-if="createForm.image === 'node'">Node.js framework<select v-model="createForm.framework"><option value="">Blank Node.js (runtime only)</option><option value="express">Express</option><option value="nextjs">Next.js</option></select></label><p v-if="['python', 'node'].includes(createForm.image)" class="framework-help"><template v-if="createForm.framework">A starter project is created in <code>/workspace</code>; framework dependencies install before the app starts.</template><template v-else>The runtime and <code>nano</code> are ready in the interactive shell, and a basic landing page remains available at the published URL.</template></p><label>Template<select v-model="createForm.template" required :disabled="!templates.length"><option value="" disabled>{{ templates.length ? 'Choose a resource preset' : 'No templates available' }}</option><option v-for="template in templates" :key="template.id" :value="template.id">{{ template.name }} - {{ template.cpu_limit }} CPU / {{ template.memory_mb }} MB</option></select></label><p v-if="!templates.length" class="error">No templates are available. Seed the built-in templates before provisioning.</p><label v-if="createForm.image === 'custom'">Custom image<input v-model="createForm.custom_image" placeholder="registry/image:tag"></label><template v-if="createForm.image === 'postgres'"><p class="postgres-help">Credentials are used to initialize this isolated PostgreSQL container. Leave the password blank to generate one; copy its connection URI from the detail page after provisioning.</p><label>Database name<input v-model="createForm.postgres_database" required pattern="[A-Za-z_][A-Za-z0-9_]*"></label><label>Database user<input v-model="createForm.postgres_username" required pattern="[A-Za-z_][A-Za-z0-9_]*"></label><label>Database password<input v-model="createForm.postgres_password" type="password" minlength="12" placeholder="Generated securely if left blank"></label><label>Database storage limit<select v-model="createForm.database_size_mb"><option :value="null">No limit</option><option :value="512">512 MB</option><option :value="1024">1 GB</option><option :value="5120">5 GB</option><option :value="10240">10 GB</option></select></label><p class="postgres-help">A selected limit constrains the PostgreSQL container writable layer, including its database files.</p></template><label class="ssh-toggle"><input v-model="createForm.ssh_enabled" type="checkbox">Enable SSH access</label><label v-if="createForm.ssh_enabled" class="ssh-key">Public key<textarea v-model="createForm.ssh_public_key" rows="3" spellcheck="false" placeholder="ssh-ed25519 AAAAC3NzaC1lZDI1… you@laptop — optional"></textarea></label><label v-if="createForm.ssh_enabled">Allowed from<input v-model="createForm.ssh_allowed_from" spellcheck="false" placeholder="203.0.113.7, 198.51.100.0/24"></label><p v-if="createForm.ssh_enabled" class="framework-help">sshd runs inside the container with password sign-in disabled, so only a published key can connect as <code>root</code>. Pasting one here is optional — leave it blank and generate pairs for each device from the server page afterwards; MiniCloud keeps only the public half. Leave <em>Allowed from</em> blank to accept any source, or list the IP addresses and CIDR ranges you connect from — sshd rejects every other source before the key is offered. The <code>ssh</code> command appears on the server page; it uses <code>MINICLOUD_SSH_HOST</code>, so set it to an address your client can actually reach (a LAN address, or a static/DDNS name once the router forwards to this SSH port).</p><button class="primary-button" :disabled="!templates.length"><Plus :size="16" /> Provision container</button></form></div>
+    <div v-if="showCreate" class="modal-backdrop" @click.self="closeCreateModal"><form ref="createDialog" class="dialog-modal" role="dialog" aria-modal="true" aria-labelledby="create-title" tabindex="-1" @submit.prevent="createServer" @keydown.esc="closeCreateModal"><div class="dialog-head section-heading"><div><div class="eyebrow">New resource</div><h2 id="create-title">Provision server</h2></div><button type="button" class="close-button" aria-label="Close" @click="closeCreateModal"><X :size="20" /></button></div><div class="dialog-body"><label>Server name<input v-model="createForm.name" required placeholder="edge-web-01"></label><label>Image<select v-model="createForm.image" @change="setFrameworkDefault"><option value="nginx">Nginx</option><option value="python">Python</option><option value="node">Node.js</option><option value="php">PHP / XAMPP</option><option value="postgres">PostgreSQL</option><option value="custom">Custom</option></select></label><p v-if="createForm.image === 'php'" class="framework-help">XAMPP installs Apache, MariaDB, PHP, Perl, and <code>nano</code>, then starts Apache automatically. Your PHP files live in <code>/opt/lampp/htdocs</code>.</p><label v-if="createForm.image === 'python'">Python framework<select v-model="createForm.framework"><option value="">Blank Python (runtime only)</option><option value="fastapi">FastAPI</option><option value="flask">Flask</option><option value="django">Django</option></select></label><label v-if="createForm.image === 'node'">Node.js framework<select v-model="createForm.framework"><option value="">Blank Node.js (runtime only)</option><option value="express">Express</option><option value="nextjs">Next.js</option></select></label><p v-if="['python', 'node'].includes(createForm.image)" class="framework-help"><template v-if="createForm.framework">A starter project is created in <code>/workspace</code>; framework dependencies install before the app starts.</template><template v-else>The runtime and <code>nano</code> are ready in the interactive shell, and a basic landing page remains available at the published URL.</template></p><label>Template<select v-model="createForm.template" required :disabled="!templates.length"><option value="" disabled>{{ templates.length ? 'Choose a resource preset' : 'No templates available' }}</option><option v-for="template in templates" :key="template.id" :value="template.id">{{ template.name }} - {{ template.cpu_limit }} CPU / {{ template.memory_mb }} MB</option></select></label><p v-if="!templates.length" class="error">No templates are available. Seed the built-in templates before provisioning.</p><label v-if="createForm.image === 'custom'">Custom image<input v-model="createForm.custom_image" placeholder="registry/image:tag"></label><template v-if="createForm.image === 'postgres'"><p class="postgres-help">Credentials are used to initialize this isolated PostgreSQL container. Leave the password blank to generate one; copy its connection URI from the detail page after provisioning.</p><label>Database name<input v-model="createForm.postgres_database" required pattern="[A-Za-z_][A-Za-z0-9_]*"></label><label>Database user<input v-model="createForm.postgres_username" required pattern="[A-Za-z_][A-Za-z0-9_]*"></label><label>Database password<input v-model="createForm.postgres_password" type="password" minlength="12" placeholder="Generated securely if left blank"></label><label>Database storage limit<select v-model="createForm.database_size_mb"><option :value="null">No limit</option><option :value="512">512 MB</option><option :value="1024">1 GB</option><option :value="5120">5 GB</option><option :value="10240">10 GB</option></select></label><p class="postgres-help">A selected limit constrains the PostgreSQL container writable layer, including its database files.</p></template><label class="ssh-toggle"><input v-model="createForm.ssh_enabled" type="checkbox">Enable SSH access</label><label v-if="createForm.ssh_enabled" class="ssh-key">Public key<textarea v-model="createForm.ssh_public_key" rows="3" spellcheck="false" placeholder="ssh-ed25519 AAAAC3NzaC1lZDI1… you@laptop — optional"></textarea></label><label v-if="createForm.ssh_enabled">Allowed from<input v-model="createForm.ssh_allowed_from" spellcheck="false" placeholder="203.0.113.7, 198.51.100.0/24"></label><p v-if="createForm.ssh_enabled" class="framework-help">sshd runs inside the container with password sign-in disabled, so only a published key can connect as <code>root</code>. Pasting one here is optional — leave it blank and generate pairs for each device from the server page afterwards; MiniCloud keeps only the public half. Leave <em>Allowed from</em> blank to accept any source, or list the IP addresses and CIDR ranges you connect from — sshd rejects every other source before the key is offered. The <code>ssh</code> command appears on the server page; it uses <code>MINICLOUD_SSH_HOST</code>, so set it to an address your client can actually reach (a LAN address, or a static/DDNS name once the router forwards to this SSH port).</p><p v-if="createError" class="error">{{ createError }}</p></div><div class="modal-actions"><button type="button" class="text-button" :disabled="createSubmitting" @click="closeCreateModal">Cancel</button><button class="primary-button" type="submit" :disabled="createSubmitting || !templates.length">{{ createSubmitting ? 'Provisioning…' : 'Provision container' }}<RefreshCw v-if="createSubmitting" class="spin" :size="16" /><Plus v-else :size="16" /></button></div></form></div>
 
     <div class="toast-container">
       <TransitionGroup name="toast">
