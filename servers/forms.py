@@ -20,7 +20,7 @@ class ServerProvisionForm(forms.ModelForm):
     ssh_public_key = forms.CharField(
         required=False,
         widget=forms.Textarea(attrs={"rows": 2, "placeholder": "ssh-ed25519 AAAA… user@laptop"}),
-        help_text="One OpenSSH public key line. SSH is key-only: passwords stay disabled.",
+        help_text="Optional. Paste one OpenSSH public key line; leave blank and add key pairs from the server page.",
     )
     ssh_allowed_from = forms.CharField(
         required=False,
@@ -78,8 +78,6 @@ class ServerProvisionForm(forms.ModelForm):
                     }
                 )
                 cleaned_data["env_vars"] = environment
-        if cleaned_data.get("ssh_enabled") and not (cleaned_data.get("ssh_public_key") or "").strip():
-            self.add_error("ssh_public_key", "Enter an OpenSSH public key to enable SSH access.")
         return cleaned_data
 
     def provisioning_data(self):
@@ -98,6 +96,43 @@ class ServerProvisionForm(forms.ModelForm):
                 "ssh_allowed_from",
             )
         }
+
+
+class ServerSSHKeyForm(forms.Form):
+    """Adds one key to a server; a blank public key means MiniCloud mints the pair."""
+
+    label = forms.CharField(max_length=60)
+    public_key = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={"rows": 2, "placeholder": "ssh-ed25519 AAAA… user@laptop"}),
+        help_text="Leave blank to have MiniCloud generate a pair and show the private key once.",
+    )
+    allowed_from = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={"placeholder": "203.0.113.7, 198.51.100.0/24"}),
+        help_text="Sources this key alone may connect from. Blank inherits the server allowlist.",
+    )
+
+    def clean_label(self):
+        return " ".join((self.cleaned_data.get("label") or "").split())
+
+    def clean_public_key(self):
+        value = self.cleaned_data.get("public_key") or ""
+        if not value.strip():
+            return ""
+        try:
+            return Server.parse_ssh_public_key(value)
+        except ValidationError as error:
+            raise forms.ValidationError(error.messages[0]) from error
+
+    def clean_allowed_from(self):
+        value = self.cleaned_data.get("allowed_from") or ""
+        if not value.strip():
+            return ""
+        try:
+            return Server.parse_ssh_allowed_from(value)
+        except ValidationError as error:
+            raise forms.ValidationError(error.messages[0]) from error
 
 
 class ServerUpdateForm(forms.ModelForm):

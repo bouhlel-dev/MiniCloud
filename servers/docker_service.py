@@ -8,7 +8,6 @@ from textwrap import dedent
 import docker
 from docker.errors import APIError, DockerException, ImageNotFound, NotFound
 from django.conf import settings
-from django.core.exceptions import ValidationError
 
 from .models import Server
 
@@ -662,17 +661,11 @@ JS
             raise DockerServiceError("Nano could not be installed in the container.")
 
     def configure_ssh(self, server, container=None):
-        """Install sshd if needed, publish the owner's key and (re)start the daemon."""
+        """Install sshd if needed, publish every key the server holds and (re)start the daemon."""
         container = container or self._get_container(server.container_id)
-        try:
-            public_key = Server.parse_ssh_public_key(server.ssh_public_key)
-            allowed_from = Server.parse_ssh_allowed_from(server.ssh_allowed_from)
-        except ValidationError as error:
-            raise DockerServiceError("; ".join(error.messages)) from error
-        # authorized_keys options are checked before the key is offered, so a
-        # port-forwarded daemon never even tries to authenticate other sources.
-        key_line = f'from="{allowed_from}" {public_key}' if allowed_from else public_key
-        authorized_keys = base64.b64encode(f"{key_line}\n".encode("utf-8")).decode("ascii")
+        lines = [key.authorized_key_line for key in server.ssh_keys.select_related("server")]
+        # authorized_keys is rewritten whole, so a revoked key never survives a restart.
+        authorized_keys = base64.b64encode("".join(f"{line}\n" for line in lines).encode("utf-8")).decode("ascii")
         script = dedent(self.SSHD_SETUP_COMMAND).strip().format(authorized_keys=authorized_keys)
         try:
             result = container.exec_run(

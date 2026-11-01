@@ -4,8 +4,8 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import {
-  ArrowLeft, ArrowUpRight, Box, Check, ChevronLeft, ChevronRight, CircleDot, Copy, Cpu, Database, Eraser, Info, LayoutDashboard, Network,
-  LogOut, Pencil, Play, Plus, RefreshCw, RotateCw, ScrollText, Server, SquareTerminal, Table2, Trash2, X, Bell, ShieldAlert, MemoryStick,
+  ArrowLeft, ArrowUpRight, Box, Check, ChevronLeft, ChevronRight, CircleDot, Copy, Cpu, Database, Download, Eraser, Info, LayoutDashboard, Network,
+  LogOut, Pencil, Play, Plus, RefreshCw, RotateCw, ScrollText, Server, SquareTerminal, Table2, Trash2, X, Bell, ShieldAlert, MemoryStick, KeyRound,
 } from '@lucide/vue'
 
 const apiBase = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000/api'
@@ -509,6 +509,8 @@ async function saveSshAllowlist() {
     selectedServer.value = updated
     // the serializer normalises every entry, so show what sshd actually enforces
     sshAllowlistDraft.value = updated.ssh_allowed_from || ''
+    // keys with no allowlist of their own inherit this, so their effective sources change too
+    loadSshKeys(updated.id)
   } catch (err) {
     sshAllowlistError.value = err.message
   } finally {
@@ -528,6 +530,82 @@ async function checkSshReachability() {
   } finally {
     sshProbing.value = false
   }
+}
+
+const sshKeys = ref([])
+const sshKeysLoading = ref(false)
+const sshKeyForm = ref({ label: '', public_key: '', allowed_from: '' })
+const sshKeySaving = ref(false)
+const sshKeyRemoving = ref('')
+const sshKeyError = ref('')
+const generatedKey = ref(null)
+const sshKeyFileName = computed(() => {
+  const slug = (generatedKey.value?.label || 'minicloud').trim().replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^[-.]+|[-.]+$/g, '')
+  return `${slug || 'minicloud'}.pem`
+})
+
+async function loadSshKeys(id) {
+  if (!id) return
+  sshKeysLoading.value = true
+  try {
+    const keys = await api(`/servers/${id}/ssh/keys/`)
+    if (selectedServer.value?.id === id) sshKeys.value = keys
+  } catch (err) {
+    sshKeyError.value = err.message
+  } finally {
+    sshKeysLoading.value = false
+  }
+}
+
+async function addSshKey() {
+  const server = selectedServer.value
+  if (!server || sshKeySaving.value) return
+  sshKeySaving.value = true
+  sshKeyError.value = ''
+  try {
+    const pasted = sshKeyForm.value.public_key.trim()
+    const body = { label: sshKeyForm.value.label.trim(), allowed_from: sshKeyForm.value.allowed_from }
+    if (pasted) body.public_key = pasted
+    const created = await api(`/servers/${server.id}/ssh/keys/`, { method: 'POST', body: JSON.stringify(body) })
+    if (created.private_key) {
+      // MiniCloud stores only the public half, so this in-memory copy is the one chance to keep it.
+      generatedKey.value = created
+      sshKeyForm.value = { label: '', public_key: '', allowed_from: '' }
+    }
+    await loadSshKeys(server.id)
+  } catch (err) {
+    sshKeyError.value = err.message
+  } finally {
+    sshKeySaving.value = false
+  }
+}
+
+async function removeSshKey(key) {
+  const server = selectedServer.value
+  if (!server || sshKeyRemoving.value) return
+  if (!window.confirm(`Remove '${key.label}'? Its private key stops working on this server immediately.`)) return
+  sshKeyRemoving.value = key.id
+  sshKeyError.value = ''
+  try {
+    await api(`/servers/${server.id}/ssh/keys/${key.id}/`, { method: 'DELETE' })
+    sshKeys.value = sshKeys.value.filter(item => item.id !== key.id)
+    if (generatedKey.value?.id === key.id) generatedKey.value = null
+  } catch (err) {
+    sshKeyError.value = err.message
+  } finally {
+    sshKeyRemoving.value = ''
+  }
+}
+
+function downloadPrivateKey() {
+  const key = generatedKey.value
+  if (!key) return
+  const url = URL.createObjectURL(new Blob([key.private_key], { type: 'application/octet-stream' }))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = sshKeyFileName.value
+  link.click()
+  URL.revokeObjectURL(url)
 }
 
 async function openDetailPanel(panel) {
@@ -681,8 +759,13 @@ async function selectServer(id) {
   selectedServer.value = servers.value.find(server => server.id === id) || null
   sshProbe.value = null
   sshAllowlistDraft.value = selectedServer.value?.ssh_allowed_from || ''
+  sshKeys.value = []
+  sshKeyError.value = ''
+  sshKeyForm.value = { label: '', public_key: '', allowed_from: '' }
+  generatedKey.value = null
   if (!selectedServer.value) return
   showDetail.value = true
+  if (selectedServer.value.ssh_enabled) loadSshKeys(id)
   metrics.value = await api(`/servers/${id}/metrics/`)
   await refreshLiveMetric()
   if (selectedServer.value?.id !== id) return
@@ -1276,6 +1359,36 @@ onBeforeUnmount(() => {
             </div>
             <p v-if="sshAllowlistError" class="error">{{ sshAllowlistError }}</p>
             <p v-if="sshProbe" :class="['ssh-probe', sshProbe.state]">{{ sshProbe.message }}</p>
+            <div class="ssh-keys">
+              <div class="ssh-keys-head"><span>Key pairs</span><button type="button" :disabled="sshKeysLoading" @click="loadSshKeys(selectedServer.id)"><RefreshCw v-if="sshKeysLoading" class="spin" :size="13" />Refresh</button></div>
+              <p v-if="!sshKeys.length && !sshKeysLoading" class="ssh-note"><Info :size="13" />No key is published, so sshd accepts nobody. Generate one below.</p>
+              <ul v-else class="ssh-key-list">
+                <li v-for="key in sshKeys" :key="key.id">
+                  <div class="ssh-key-main"><strong>{{ key.label }}</strong><small>{{ key.key_type }} · <code>{{ key.fingerprint }}</code></small></div>
+                  <small class="ssh-key-sources">{{ key.sources || 'any source' }}</small>
+                  <button type="button" class="ssh-key-remove" :disabled="sshKeyRemoving === key.id" @click="removeSshKey(key)"><Trash2 v-if="sshKeyRemoving !== key.id" :size="13" /><RefreshCw v-else class="spin" :size="13" />{{ sshKeyRemoving === key.id ? 'Removing…' : 'Remove' }}</button>
+                </li>
+              </ul>
+              <p v-if="sshKeyError" class="error">{{ sshKeyError }}</p>
+              <div v-if="!generatedKey" class="ssh-key-new">
+                <div class="ssh-key-fields">
+                  <label>Device<input v-model="sshKeyForm.label" maxlength="60" spellcheck="false" placeholder="work-laptop"></label>
+                  <label>Allowed from<input v-model="sshKeyForm.allowed_from" spellcheck="false" placeholder="inherit the server allowlist"></label>
+                </div>
+                <label>Public key<textarea v-model="sshKeyForm.public_key" rows="2" spellcheck="false" placeholder="ssh-ed25519 AAAAC3NzaC1lZDI1… you@laptop — leave blank and MiniCloud generates the pair"></textarea></label>
+                <div class="ssh-key-actions"><button type="button" :disabled="sshKeySaving || !sshKeyForm.label.trim()" @click="addSshKey"><RefreshCw v-if="sshKeySaving" class="spin" :size="13" /><KeyRound v-else :size="13" />{{ sshKeyForm.public_key.trim() ? 'Add public key' : 'Generate key pair' }}</button></div>
+              </div>
+              <div v-else class="ssh-secret">
+                <p class="ssh-note warning"><ShieldAlert :size="13" />This private key for {{ generatedKey.label }} is shown once. MiniCloud keeps no copy, so save it now or lose it.</p>
+                <textarea readonly rows="9" spellcheck="false" aria-label="Private key" @focus="$event.target.select()">{{ generatedKey.private_key }}</textarea>
+                <div class="ssh-secret-actions">
+                  <button type="button" @click="copyText(generatedKey.private_key, 'private')"><Check v-if="copiedField === 'private'" :size="13" /><Copy v-else :size="13" />{{ copiedField === 'private' ? 'Copied' : 'Copy' }}</button>
+                  <button type="button" @click="downloadPrivateKey"><Download :size="13" />Download {{ sshKeyFileName }}</button>
+                  <button type="button" class="done" @click="generatedKey = null">Done</button>
+                </div>
+                <p class="ssh-note"><Info :size="13" />Sign in with <code>ssh -i {{ sshKeyFileName }} -p {{ selectedServer.ssh_port }} root@{{ selectedServer.ssh_host }}</code></p>
+              </div>
+            </div>
           </div>
         </div>
         <dl class="summary-stats">
@@ -1283,7 +1396,7 @@ onBeforeUnmount(() => {
           <div><dt>Memory</dt><dd>{{ memoryUsage }}<i>MB</i></dd><small>of {{ selectedServer.effective_memory_mb ?? selectedServer.template_memory_mb }} MB</small></div>
           <div><dt>Uptime</dt><dd>{{ latestMetric?.uptime_display || '—' }}</dd><small>since last restart</small></div>
           <div><dt>Host port</dt><dd>{{ selectedServer.host_port || '—' }}</dd><small>{{ selectedServer.postgres_connection_string ? 'published on localhost' : 'container mapping' }}</small></div>
-          <div v-if="selectedServer.ssh_enabled"><dt>SSH port</dt><dd>{{ selectedServer.ssh_port || '—' }}</dd><small>key only · {{ selectedServer.ssh_allowed_from ? 'allowlisted sources' : 'any source' }}</small></div>
+          <div v-if="selectedServer.ssh_enabled"><dt>SSH port</dt><dd>{{ selectedServer.ssh_port || '—' }}</dd><small>key only · {{ sshKeys.length }} key{{ sshKeys.length === 1 ? '' : 's' }} published</small></div>
           <div v-if="selectedServer.image === 'postgres'"><dt>Storage</dt><dd>{{ selectedServer.database_size_display || 'No limit' }}</dd><small>writable layer</small></div>
         </dl>
       </div>
@@ -1615,7 +1728,7 @@ onBeforeUnmount(() => {
       </form>
     </div>
 
-    <div v-if="showCreate" class="modal-backdrop" @click.self="showCreate = false"><form class="create-modal" @submit.prevent="createServer"><div class="section-heading"><div><div class="eyebrow">New resource</div><h2>Provision server</h2></div><button type="button" class="close-button" aria-label="Close" @click="showCreate = false"><X :size="20" /></button></div><label>Server name<input v-model="createForm.name" required placeholder="edge-web-01"></label><label>Image<select v-model="createForm.image" @change="setFrameworkDefault"><option value="nginx">Nginx</option><option value="python">Python</option><option value="node">Node.js</option><option value="php">PHP / XAMPP</option><option value="postgres">PostgreSQL</option><option value="custom">Custom</option></select></label><p v-if="createForm.image === 'php'" class="framework-help">XAMPP installs Apache, MariaDB, PHP, Perl, and <code>nano</code>, then starts Apache automatically. Your PHP files live in <code>/opt/lampp/htdocs</code>.</p><label v-if="createForm.image === 'python'">Python framework<select v-model="createForm.framework"><option value="">Blank Python (runtime only)</option><option value="fastapi">FastAPI</option><option value="flask">Flask</option><option value="django">Django</option></select></label><label v-if="createForm.image === 'node'">Node.js framework<select v-model="createForm.framework"><option value="">Blank Node.js (runtime only)</option><option value="express">Express</option><option value="nextjs">Next.js</option></select></label><p v-if="['python', 'node'].includes(createForm.image)" class="framework-help"><template v-if="createForm.framework">A starter project is created in <code>/workspace</code>; framework dependencies install before the app starts.</template><template v-else>The runtime and <code>nano</code> are ready in the interactive shell, and a basic landing page remains available at the published URL.</template></p><label>Template<select v-model="createForm.template" required :disabled="!templates.length"><option value="" disabled>{{ templates.length ? 'Choose a resource preset' : 'No templates available' }}</option><option v-for="template in templates" :key="template.id" :value="template.id">{{ template.name }} - {{ template.cpu_limit }} CPU / {{ template.memory_mb }} MB</option></select></label><p v-if="!templates.length" class="error">No templates are available. Seed the built-in templates before provisioning.</p><label v-if="createForm.image === 'custom'">Custom image<input v-model="createForm.custom_image" placeholder="registry/image:tag"></label><template v-if="createForm.image === 'postgres'"><p class="postgres-help">Credentials are used to initialize this isolated PostgreSQL container. Leave the password blank to generate one; copy its connection URI from the detail page after provisioning.</p><label>Database name<input v-model="createForm.postgres_database" required pattern="[A-Za-z_][A-Za-z0-9_]*"></label><label>Database user<input v-model="createForm.postgres_username" required pattern="[A-Za-z_][A-Za-z0-9_]*"></label><label>Database password<input v-model="createForm.postgres_password" type="password" minlength="12" placeholder="Generated securely if left blank"></label><label>Database storage limit<select v-model="createForm.database_size_mb"><option :value="null">No limit</option><option :value="512">512 MB</option><option :value="1024">1 GB</option><option :value="5120">5 GB</option><option :value="10240">10 GB</option></select></label><p class="postgres-help">A selected limit constrains the PostgreSQL container writable layer, including its database files.</p></template><label class="ssh-toggle"><input v-model="createForm.ssh_enabled" type="checkbox">Enable SSH access</label><label v-if="createForm.ssh_enabled" class="ssh-key">Public key<textarea v-model="createForm.ssh_public_key" rows="3" spellcheck="false" placeholder="ssh-ed25519 AAAAC3NzaC1lZDI1… you@laptop"></textarea></label><label v-if="createForm.ssh_enabled">Allowed from<input v-model="createForm.ssh_allowed_from" spellcheck="false" placeholder="203.0.113.7, 198.51.100.0/24"></label><p v-if="createForm.ssh_enabled" class="framework-help">sshd runs inside the container with password sign-in disabled, so only this key can connect as <code>root</code>. Leave <em>Allowed from</em> blank to accept any source, or list the IP addresses and CIDR ranges you connect from — sshd rejects every other source before the key is offered. The <code>ssh</code> command appears on the server page; it uses <code>MINICLOUD_SSH_HOST</code>, so set it to an address your client can actually reach (a LAN address, or a static/DDNS name once the router forwards to this SSH port).</p><button class="primary-button" :disabled="!templates.length"><Plus :size="16" /> Provision container</button></form></div>
+    <div v-if="showCreate" class="modal-backdrop" @click.self="showCreate = false"><form class="create-modal" @submit.prevent="createServer"><div class="section-heading"><div><div class="eyebrow">New resource</div><h2>Provision server</h2></div><button type="button" class="close-button" aria-label="Close" @click="showCreate = false"><X :size="20" /></button></div><label>Server name<input v-model="createForm.name" required placeholder="edge-web-01"></label><label>Image<select v-model="createForm.image" @change="setFrameworkDefault"><option value="nginx">Nginx</option><option value="python">Python</option><option value="node">Node.js</option><option value="php">PHP / XAMPP</option><option value="postgres">PostgreSQL</option><option value="custom">Custom</option></select></label><p v-if="createForm.image === 'php'" class="framework-help">XAMPP installs Apache, MariaDB, PHP, Perl, and <code>nano</code>, then starts Apache automatically. Your PHP files live in <code>/opt/lampp/htdocs</code>.</p><label v-if="createForm.image === 'python'">Python framework<select v-model="createForm.framework"><option value="">Blank Python (runtime only)</option><option value="fastapi">FastAPI</option><option value="flask">Flask</option><option value="django">Django</option></select></label><label v-if="createForm.image === 'node'">Node.js framework<select v-model="createForm.framework"><option value="">Blank Node.js (runtime only)</option><option value="express">Express</option><option value="nextjs">Next.js</option></select></label><p v-if="['python', 'node'].includes(createForm.image)" class="framework-help"><template v-if="createForm.framework">A starter project is created in <code>/workspace</code>; framework dependencies install before the app starts.</template><template v-else>The runtime and <code>nano</code> are ready in the interactive shell, and a basic landing page remains available at the published URL.</template></p><label>Template<select v-model="createForm.template" required :disabled="!templates.length"><option value="" disabled>{{ templates.length ? 'Choose a resource preset' : 'No templates available' }}</option><option v-for="template in templates" :key="template.id" :value="template.id">{{ template.name }} - {{ template.cpu_limit }} CPU / {{ template.memory_mb }} MB</option></select></label><p v-if="!templates.length" class="error">No templates are available. Seed the built-in templates before provisioning.</p><label v-if="createForm.image === 'custom'">Custom image<input v-model="createForm.custom_image" placeholder="registry/image:tag"></label><template v-if="createForm.image === 'postgres'"><p class="postgres-help">Credentials are used to initialize this isolated PostgreSQL container. Leave the password blank to generate one; copy its connection URI from the detail page after provisioning.</p><label>Database name<input v-model="createForm.postgres_database" required pattern="[A-Za-z_][A-Za-z0-9_]*"></label><label>Database user<input v-model="createForm.postgres_username" required pattern="[A-Za-z_][A-Za-z0-9_]*"></label><label>Database password<input v-model="createForm.postgres_password" type="password" minlength="12" placeholder="Generated securely if left blank"></label><label>Database storage limit<select v-model="createForm.database_size_mb"><option :value="null">No limit</option><option :value="512">512 MB</option><option :value="1024">1 GB</option><option :value="5120">5 GB</option><option :value="10240">10 GB</option></select></label><p class="postgres-help">A selected limit constrains the PostgreSQL container writable layer, including its database files.</p></template><label class="ssh-toggle"><input v-model="createForm.ssh_enabled" type="checkbox">Enable SSH access</label><label v-if="createForm.ssh_enabled" class="ssh-key">Public key<textarea v-model="createForm.ssh_public_key" rows="3" spellcheck="false" placeholder="ssh-ed25519 AAAAC3NzaC1lZDI1… you@laptop — optional"></textarea></label><label v-if="createForm.ssh_enabled">Allowed from<input v-model="createForm.ssh_allowed_from" spellcheck="false" placeholder="203.0.113.7, 198.51.100.0/24"></label><p v-if="createForm.ssh_enabled" class="framework-help">sshd runs inside the container with password sign-in disabled, so only a published key can connect as <code>root</code>. Pasting one here is optional — leave it blank and generate pairs for each device from the server page afterwards; MiniCloud keeps only the public half. Leave <em>Allowed from</em> blank to accept any source, or list the IP addresses and CIDR ranges you connect from — sshd rejects every other source before the key is offered. The <code>ssh</code> command appears on the server page; it uses <code>MINICLOUD_SSH_HOST</code>, so set it to an address your client can actually reach (a LAN address, or a static/DDNS name once the router forwards to this SSH port).</p><button class="primary-button" :disabled="!templates.length"><Plus :size="16" /> Provision container</button></form></div>
 
     <div class="toast-container">
       <TransitionGroup name="toast">

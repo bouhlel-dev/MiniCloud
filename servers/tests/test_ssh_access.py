@@ -11,7 +11,7 @@ from accounts.models import User
 from servers import services
 from servers.docker_service import DockerService, DockerServiceError
 from servers.forms import ServerProvisionForm
-from servers.models import Server, ServerTemplate
+from servers.models import Server, ServerSSHKey, ServerTemplate
 
 SSHD_MARKER = "PermitRootLogin=prohibit-password"
 
@@ -19,6 +19,13 @@ SSHD_MARKER = "PermitRootLogin=prohibit-password"
 def ssh_public_key(algorithm="ssh-ed25519"):
     blob = struct.pack(">I", len(algorithm)) + algorithm.encode() + struct.pack(">I", 32) + bytes(range(32))
     return f"{algorithm} {base64.b64encode(blob).decode()} owner@laptop"
+
+
+def add_key(server, *, label="default", algorithm="ssh-ed25519", allowed_from=""):
+    """authorized_keys is built from rows, so a fixture server needs one to be reachable."""
+    return ServerSSHKey.objects.create(
+        server=server, label=label, public_key=ssh_public_key(algorithm), allowed_from=allowed_from
+    )
 
 
 def executed_scripts(container):
@@ -62,10 +69,10 @@ def ssh_server(owner, template):
         host_port=10100,
         ssh_enabled=True,
         ssh_port=10101,
-        ssh_public_key=ssh_public_key(),
         container_id="container-id",
     )
     server.transition_to(Server.Status.RUNNING)
+    add_key(server)
     return server
 
 
@@ -78,20 +85,11 @@ def ssh_server(owner, template):
         "ssh-rsa !!!not-base64!!! owner@laptop",
     ],
 )
-def test_ssh_keys_are_validated_before_they_reach_a_container(owner, template, value):
-    server = Server(
-        owner=owner,
-        name="invalid-key",
-        image=Server.Image.NGINX,
-        template=template,
-        host_port=10100,
-        ssh_port=10101,
-        ssh_enabled=True,
-        ssh_public_key=value,
-    )
+def test_ssh_keys_are_validated_before_they_reach_a_container(ssh_server, value):
+    key = ServerSSHKey(server=ssh_server, label="second", public_key=value)
 
     with pytest.raises(ValidationError):
-        server.full_clean()
+        key.full_clean()
 
 
 def test_disabled_ssh_needs_neither_key_nor_port(owner, template):
@@ -116,7 +114,6 @@ def test_enabling_ssh_on_a_saved_server_requires_a_port(owner, template):
         host_port=10100,
     )
     server.ssh_enabled = True
-    server.ssh_public_key = ssh_public_key()
 
     with pytest.raises(ValidationError, match="SSH host port"):
         server.full_clean()
@@ -131,7 +128,6 @@ def test_a_new_server_may_not_have_an_ssh_port_yet(owner, template):
         template=template,
         host_port=10100,
         ssh_enabled=True,
-        ssh_public_key=ssh_public_key(),
     )
 
     server.full_clean()
@@ -146,7 +142,6 @@ def test_ssh_port_cannot_reuse_the_application_port(owner, template):
         host_port=10100,
         ssh_enabled=True,
         ssh_port=10100,
-        ssh_public_key=ssh_public_key(),
     )
 
     with pytest.raises(ValidationError, match="must differ"):
@@ -160,7 +155,7 @@ def test_ssh_command_advertises_the_configured_host(ssh_server, settings):
 
 
 def test_enabled_ssh_publishes_port_22_and_installs_sshd(owner, template):
-    server = Server(
+    server = Server.objects.create(
         owner=owner,
         name="ssh-nginx",
         image=Server.Image.NGINX,
@@ -168,8 +163,8 @@ def test_enabled_ssh_publishes_port_22_and_installs_sshd(owner, template):
         host_port=10100,
         ssh_enabled=True,
         ssh_port=10101,
-        ssh_public_key=ssh_public_key(),
     )
+    key = add_key(server)
     container = running_container()
     client = MagicMock()
     client.containers.run.return_value = container
@@ -178,7 +173,7 @@ def test_enabled_ssh_publishes_port_22_and_installs_sshd(owner, template):
 
     assert client.containers.run.call_args.kwargs["ports"] == {"80/tcp": 10100, "22/tcp": 10101}
     assert len(sshd_scripts(container)) == 1
-    key_blob = base64.b64encode(f"{server.ssh_public_key}\n".encode()).decode("ascii")
+    key_blob = base64.b64encode(f"{key.public_key}\n".encode()).decode("ascii")
     assert key_blob in sshd_scripts(container)[0]
 
 
@@ -201,7 +196,7 @@ def test_disabled_ssh_leaves_port_22_closed(owner, template):
 
 
 def test_a_broken_sshd_rolls_the_container_back(owner, template):
-    server = Server(
+    server = Server.objects.create(
         owner=owner,
         name="failing-ssh",
         image=Server.Image.NGINX,
@@ -209,8 +204,8 @@ def test_a_broken_sshd_rolls_the_container_back(owner, template):
         host_port=10100,
         ssh_enabled=True,
         ssh_port=10101,
-        ssh_public_key=ssh_public_key(),
     )
+    add_key(server)
     container = running_container()
 
     def exec_run(command, **kwargs):
@@ -272,7 +267,7 @@ def test_provisioning_reserves_a_second_port_for_ssh(owner, template):
         )
 
     assert (server.host_port, server.ssh_port) == (10100, 10101)
-    assert server.ssh_public_key == ssh_public_key()
+    assert server.ssh_keys.get().public_key == ssh_public_key()
     docker.find_available_host_port.assert_any_call(reserved={10100})
 
 
@@ -294,7 +289,7 @@ def test_provisioning_without_ssh_keeps_one_port(owner, template):
         )
 
     assert server.ssh_port is None
-    assert server.ssh_public_key == ""
+    assert server.ssh_keys.count() == 0
     docker.find_available_host_port.assert_called_once_with()
 
 
@@ -328,38 +323,41 @@ def test_api_passes_ssh_options_to_provisioning(api_client, owner, template):
     assert provision.call_args.kwargs["ssh_public_key"] == ssh_public_key()
 
 
-def test_api_rejects_ssh_without_a_key(api_client, owner, template):
+def test_api_accepts_ssh_without_a_key(api_client, owner, template):
+    # Keys are added after provisioning now, so provisioning must not demand one.
     api_client.force_authenticate(user=owner)
+    created = Server.objects.create(owner=owner, name="created", image=Server.Image.NGINX, template=template)
 
-    response = api_client.post(
-        "/api/servers/",
-        {
-            "name": "api-no-key",
-            "image": "nginx",
-            "template": template.pk,
-            "env_vars": {},
-            "ssh_enabled": True,
-        },
-        format="json",
-    )
+    with patch("api.views.provision_server", return_value=created) as provision:
+        response = api_client.post(
+            "/api/servers/",
+            {
+                "name": "api-no-key",
+                "image": "nginx",
+                "template": template.pk,
+                "env_vars": {},
+                "ssh_enabled": True,
+            },
+            format="json",
+        )
 
-    assert response.status_code == 400
-    assert "ssh_public_key" in response.data
+    assert response.status_code == 201
+    assert provision.call_args.kwargs.get("ssh_public_key", "") == ""
 
 
-def test_replacing_the_key_reconfigures_a_running_container(api_client, owner, ssh_server):
+def test_keys_are_not_editable_through_the_server_endpoint(api_client, owner, ssh_server):
     api_client.force_authenticate(user=owner)
-    replacement = ssh_public_key("ssh-rsa")
     docker = Mock()
 
     with patch("api.views.DockerService", return_value=docker):
-        response = api_client.patch(f"/api/servers/{ssh_server.pk}/", {"ssh_public_key": replacement}, format="json")
+        response = api_client.patch(
+            f"/api/servers/{ssh_server.pk}/", {"ssh_public_key": ssh_public_key("ssh-rsa")}, format="json"
+        )
 
-    assert response.status_code == 200
-    ssh_server.refresh_from_db()
-    assert ssh_server.ssh_public_key == replacement
-    docker.configure_ssh.assert_called_once_with(ssh_server)
-    assert response.data["ssh_command"].startswith("ssh -p 10101 root@")
+    assert response.status_code == 400
+    assert "ssh_allowed_from" in response.data["detail"]
+    assert ssh_server.ssh_keys.count() == 1
+    docker.configure_ssh.assert_not_called()
 
 
 def test_api_never_lets_a_client_assign_the_ssh_port(api_client, owner, template):
@@ -412,7 +410,6 @@ def test_a_bad_allowlist_is_rejected_by_the_model(owner, template):
         host_port=10100,
         ssh_enabled=True,
         ssh_port=10101,
-        ssh_public_key=ssh_public_key(),
         ssh_allowed_from="office.example.com",
     )
 
@@ -421,7 +418,7 @@ def test_a_bad_allowlist_is_rejected_by_the_model(owner, template):
 
 
 def test_the_allowlist_becomes_a_from_option_on_the_key(owner, template):
-    server = Server(
+    server = Server.objects.create(
         owner=owner,
         name="locked-ssh",
         image=Server.Image.NGINX,
@@ -429,16 +426,16 @@ def test_the_allowlist_becomes_a_from_option_on_the_key(owner, template):
         host_port=10100,
         ssh_enabled=True,
         ssh_port=10101,
-        ssh_public_key=ssh_public_key(),
-        ssh_allowed_from="203.0.113.7",
+        ssh_allowed_from="203.0.113.7/32",
     )
+    key = add_key(server)
     container = running_container()
     client = MagicMock()
     client.containers.run.return_value = container
 
     DockerService(client=client).create_container(server)
 
-    key_line = f'from="203.0.113.7/32" {server.ssh_public_key}'
+    key_line = f'from="203.0.113.7/32" {key.public_key}'
     assert base64.b64encode(f"{key_line}\n".encode()).decode("ascii") in sshd_scripts(container)[0]
 
 

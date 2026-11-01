@@ -1,4 +1,5 @@
 from django.core.exceptions import ValidationError
+from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -15,7 +16,9 @@ from servers.services import (
     QuotaExceededError,
     ServerServiceError,
     check_ssh_reachability,
+    create_server_ssh_key,
     delete_server,
+    delete_server_ssh_key,
     execute_server_command,
     provision_server,
     restart_server,
@@ -27,6 +30,7 @@ from .serializers import (
     MetricSnapshotSerializer,
     NotificationSerializer,
     ServerSerializer,
+    ServerSSHKeySerializer,
     ServerTemplateSerializer,
 )
 
@@ -64,9 +68,9 @@ class ServerViewSet(viewsets.ModelViewSet):
         server = self.get_object()
         serializer = self.get_serializer(server, data=request.data, partial=kwargs.pop("partial", False))
         serializer.is_valid(raise_exception=True)
-        allowed = {"name", "custom_image", "env_vars", "ssh_public_key", "ssh_allowed_from"}
+        allowed = {"name", "custom_image", "env_vars", "ssh_allowed_from"}
         if set(serializer.validated_data) - allowed:
-            return Response({"detail": "Only name, custom_image, env_vars, ssh_public_key and ssh_allowed_from can be updated."}, status=400)
+            return Response({"detail": "Only name, custom_image, env_vars and ssh_allowed_from can be updated."}, status=400)
         for field, value in serializer.validated_data.items():
             setattr(server, field, value)
         try:
@@ -74,9 +78,7 @@ class ServerViewSet(viewsets.ModelViewSet):
             server.save()
         except ValidationError as error:
             return Response(error.message_dict, status=status.HTTP_400_BAD_REQUEST)
-        if server.ssh_enabled and server.status == Server.Status.RUNNING and (
-            {"ssh_public_key", "ssh_allowed_from"} & set(serializer.validated_data)
-        ):
+        if server.ssh_enabled and server.status == Server.Status.RUNNING and "ssh_allowed_from" in serializer.validated_data:
             try:
                 DockerService().configure_ssh(server)
             except DockerServiceError as error:
@@ -310,6 +312,45 @@ class ServerViewSet(viewsets.ModelViewSet):
         except ServerServiceError as error:
             return Response({"detail": str(error)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(server).data)
+
+
+class ServerSSHKeyViewSet(viewsets.ViewSet):
+    """One row per device, because a single pasted key could not outlive a second laptop."""
+
+    def _server(self, request, server_pk):
+        return get_object_or_404(
+            Server.objects.filter(owner=request.user).exclude(status=Server.Status.DELETED),
+            pk=server_pk,
+        )
+
+    def list(self, request, server_pk=None):
+        server = self._server(request, server_pk)
+        return Response(ServerSSHKeySerializer(server.ssh_keys.select_related("server"), many=True).data)
+
+    def create(self, request, server_pk=None):
+        server = self._server(request, server_pk)
+        serializer = ServerSSHKeySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            key, private_key = create_server_ssh_key(server, **serializer.validated_data)
+        except ValidationError as error:
+            return Response(error.message_dict, status=status.HTTP_400_BAD_REQUEST)
+        except DockerServiceError as error:
+            return Response({"detail": str(error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        data = ServerSSHKeySerializer(key).data
+        if private_key:
+            # MiniCloud keeps no copy, so this response is the client's only chance to read it.
+            data["private_key"] = private_key
+        return Response(data, status=status.HTTP_201_CREATED)
+
+    def destroy(self, request, pk=None, server_pk=None):
+        server = self._server(request, server_pk)
+        key = get_object_or_404(server.ssh_keys, pk=pk)
+        try:
+            delete_server_ssh_key(server, key)
+        except DockerServiceError as error:
+            return Response({"detail": str(error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class ServerTemplateViewSet(viewsets.ReadOnlyModelViewSet):

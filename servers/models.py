@@ -9,6 +9,8 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models, transaction
 from django.db.models import Q
 
+from .ssh_keys import fingerprint_of
+
 
 class ServerTemplate(models.Model):
     name = models.CharField(max_length=100, unique=True)
@@ -126,7 +128,6 @@ class Server(models.Model):
         unique=True,
         validators=[MinValueValidator(1), MaxValueValidator(65535)],
     )
-    ssh_public_key = models.TextField(blank=True, default="")
     ssh_allowed_from = models.TextField(blank=True, default="")
     env_vars = models.JSONField(default=dict, blank=True)
     container_id = models.CharField(max_length=64, blank=True)
@@ -272,10 +273,6 @@ class Server(models.Model):
         if self.database_size_mb is not None and self.image != self.Image.POSTGRES:
             errors["database_size_mb"] = "Database storage limits are only available for PostgreSQL servers."
         if self.ssh_enabled:
-            try:
-                self.parse_ssh_public_key(self.ssh_public_key)
-            except ValidationError as error:
-                errors["ssh_public_key"] = error.messages[0]
             if not self.ssh_port and self.pk is not None:
                 # The create forms validate before provisioning allocates the port, so only a saved row is inconsistent.
                 errors["ssh_port"] = "An SSH host port is required when SSH access is enabled."
@@ -303,3 +300,57 @@ class Server(models.Model):
             if current_status and current_status != self.status and not self.is_valid_transition(current_status, self.status):
                 raise ValidationError({"status": f"Cannot transition from {current_status} to {self.status}."})
         super().save(*args, **kwargs)
+
+
+class ServerSSHKey(models.Model):
+    """One authorized_keys line, so a server can hold a separate key per device."""
+
+    server = models.ForeignKey(Server, on_delete=models.CASCADE, related_name="ssh_keys")
+    label = models.CharField(max_length=60)
+    public_key = models.TextField()
+    allowed_from = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["server", "label"], name="unique_ssh_key_label_per_server"),
+        ]
+
+    def __str__(self):
+        return f"{self.server}/{self.label}"
+
+    @property
+    def key_type(self):
+        return self.public_key.split(" ", 1)[0]
+
+    @property
+    def fingerprint(self):
+        return fingerprint_of(self.public_key)
+
+    @property
+    def sources(self):
+        """A key may restrict its own sources, otherwise it inherits the server allowlist."""
+        return self.allowed_from or self.server.ssh_allowed_from
+
+    @property
+    def authorized_key_line(self):
+        # authorized_keys options are checked before the key is offered, so sshd
+        # rejects a disallowed source without ever trying the key against it.
+        sources = self.sources
+        return f'from="{sources}" {self.public_key}' if sources else self.public_key
+
+    def clean(self):
+        errors = {}
+        if not (self.label or "").strip():
+            errors["label"] = "Name the key after the device that will connect with it."
+        try:
+            Server.parse_ssh_public_key(self.public_key)
+        except ValidationError as error:
+            errors["public_key"] = error.messages[0]
+        try:
+            Server.parse_ssh_allowed_from(self.allowed_from)
+        except ValidationError as error:
+            errors["allowed_from"] = error.messages[0]
+        if errors:
+            raise ValidationError(errors)

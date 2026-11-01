@@ -70,11 +70,17 @@ Both resource alerts compare against the container's own quota, not the host: `M
 
 ## SSH access
 
-Tick **Enable SSH access** when provisioning, or post `ssh_enabled` with `ssh_public_key` to `/api/servers/`. MiniCloud allocates a second host port from the same `MINICLOUD_PORT_RANGE_*` pool, forwards it to `sshd` on port 22 inside the container, installs OpenSSH with whichever package manager the image provides (`apk`, `apt-get`, `dnf`, `yum`), writes the key to `/root/.ssh/authorized_keys` and starts the daemon with `PermitRootLogin=prohibit-password`, `PasswordAuthentication=no`, `PermitEmptyPasswords=no`, `KbdInteractiveAuthentication=no`, `MaxAuthTries=3`, `LoginGraceTime=30`, `MaxStartups=10:30:60` and a 300-second client alive interval. Only the public key you supply can sign in, and no private key is generated or stored anywhere.
+Tick **Enable SSH access** when provisioning, or post `ssh_enabled` to `/api/servers/`. MiniCloud allocates a second host port from the same `MINICLOUD_PORT_RANGE_*` pool, forwards it to `sshd` on port 22 inside the container, installs OpenSSH with whichever package manager the image provides (`apk`, `apt-get`, `dnf`, `yum`), writes every published key to `/root/.ssh/authorized_keys` and starts the daemon with `PermitRootLogin=prohibit-password`, `PasswordAuthentication=no`, `PermitEmptyPasswords=no`, `KbdInteractiveAuthentication=no`, `MaxAuthTries=3`, `LoginGraceTime=30`, `MaxStartups=10:30:60` and a 300-second client alive interval. Only published keys can sign in. A server with no key published accepts nobody, so you can enable SSH first and add keys from the server page afterwards.
 
-**Allowed from.** List the source addresses that may connect (`203.0.113.7, 198.51.100.0/24`, comma or newline separated) or leave it blank to accept any source. Every entry is normalised to CIDR and written onto the key as `from="…"`, which sshd checks before it offers a signature, so other addresses are refused without reaching the key at all. Hostnames are rejected on purpose: sshd would resolve them through a reverse DNS lookup that the connecting host controls. The value can be changed later — `PATCH /api/servers/<id>/ {"ssh_allowed_from": "203.0.113.7"}` or the **Allowed from** box on the server page — and is pushed into the running container immediately. Keep one address you control reachable while you test, so a typo cannot lock you out.
+### Key pairs
 
-`sshd` is not the container entrypoint, so MiniCloud re-applies the key and restarts the daemon on every start, restart and health-check auto-restart. `PATCH /api/servers/<id>/` also accepts a replacement `ssh_public_key`; turning SSH on or off afterwards would need new port bindings, so it stays a provisioning-time choice.
+Every key is a row of its own, one per device, named after it (`work-laptop`, `phone`). Each row stores only the OpenSSH public line, so a lost device is revoked by deleting its row and nothing else changes.
+
+**Generate a pair.** Leave **Public key** blank — on the server page or in `POST /api/servers/<id>/ssh/keys/` — and MiniCloud mints an ed25519 pair, keeps the public half, and shows the private half exactly once with a copy button and a download. Nothing stores it: not the database, not the container, not the logs. If you close the page without saving it, generate another. A pasted public key is normalised and stored instead, and no private half is ever returned.
+
+**Allowed from** on the server is the default for every key; **Allowed from** on a key overrides it, which is how one server can accept a laptop from the office range and a phone from its own address. List the source addresses that may connect (`203.0.113.7, 198.51.100.0/24`, comma or newline separated) or leave both blank to accept any source. Every entry is normalised to CIDR and written onto the key as `from="…"`, which sshd checks before it offers a signature, so other addresses are refused without reaching the key at all. Hostnames are rejected on purpose: sshd would resolve them through a reverse DNS lookup that the connecting host controls. Changing the server-wide value re-pushes `authorized_keys` into the running container immediately, as does adding or removing a key — `authorized_keys` is rewritten whole, so a revoked key cannot survive a restart. Keep one address you control reachable while you test, so a typo cannot lock you out.
+
+`sshd` is not the container entrypoint, so MiniCloud re-applies the keys and restarts the daemon on every start, restart and health-check auto-restart. Turning SSH on or off after provisioning would need new port bindings, so it stays a provisioning-time choice; keys themselves are added and removed at any time.
 
 ### Which address clients connect to
 
@@ -98,7 +104,7 @@ The command shown on the server page is `ssh -p <ssh port> root@<MINICLOUD_SSH_H
    New-NetFirewallRule -DisplayName "MiniCloud SSH 10101" -Direction Inbound -Protocol TCP -LocalPort 10101 -Action Allow
    ```
 
-5. **Verify from outside.** `ssh -p <external port> root@<host>` from a device on another network, such as a phone on mobile data. The command MiniCloud copies out of the server page uses the *published* port, so when the router listens on a different external port, replace it. Then set **Allowed from** down to the addresses you actually connect from.
+5. **Verify from outside.** `ssh -i <key file> -p <external port> root@<host>` from a device on another network, such as a phone on mobile data. The command MiniCloud copies out of the server page uses the *published* port, so when the router listens on a different external port, replace it. Then set **Allowed from** down to the addresses you actually connect from.
 6. **Undo it** by deleting the forward, and `Remove-NetFirewallRule -DisplayName "MiniCloud SSH 10101"` if the rule was added. Nothing else in MiniCloud has to change; the container keeps serving locally.
 
 If the router's WAN address itself looks private (`100.64.0.0/10`, `10.x`, `100.x`), the ISP is using CGNAT and no port forward will ever work — use the overlay-network option instead.
@@ -127,11 +133,13 @@ POST /api/token/
 Send it as `Authorization: Token <token>`. Available endpoints:
 
 - `GET, POST /api/servers/`
-- `GET, PATCH, DELETE /api/servers/<id>/` — `PATCH` accepts `name`, `custom_image`, `env_vars`, `ssh_public_key` and `ssh_allowed_from`
+- `GET, PATCH, DELETE /api/servers/<id>/` — `PATCH` accepts `name`, `custom_image`, `env_vars` and `ssh_allowed_from`
 - `POST /api/servers/<id>/start/`
 - `POST /api/servers/<id>/stop/`
 - `POST /api/servers/<id>/restart/`
 - `POST /api/servers/<id>/ssh/check/` — TCP probe of the advertised SSH host and port
+- `GET, POST /api/servers/<id>/ssh/keys/` — `POST` with only a `label` generates a pair and returns `private_key`, which is never stored or repeated
+- `DELETE /api/servers/<id>/ssh/keys/<key id>/` — revokes that key and republishes `authorized_keys`
 - `GET /api/servers/<id>/metrics/`
 
 ## Tests and CI

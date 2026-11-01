@@ -1,17 +1,21 @@
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
+from django.core.exceptions import ValidationError
 from django.db.models.deletion import ProtectedError
 from django.http import JsonResponse
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
 from django.views import View
 from django.views.generic import CreateView, DeleteView, DetailView, FormView, ListView, UpdateView
 
-from .forms import ServerProvisionForm, ServerTemplateForm, ServerUpdateForm
+from .docker_service import DockerServiceError
+from .forms import ServerProvisionForm, ServerSSHKeyForm, ServerTemplateForm, ServerUpdateForm
 from .models import Server, ServerTemplate
 from .services import (
     ServerServiceError,
+    create_server_ssh_key,
     delete_server,
+    delete_server_ssh_key,
     postgres_connection_string,
     provision_server,
     restart_server,
@@ -55,6 +59,7 @@ class ServerDetailView(OwnedServerQuerysetMixin, DetailView):
         context["incidents"] = self.object.incidents.all()[:8]
         context["open_incidents"] = self.object.incidents.filter(status="open").count()
         context["postgres_connection_string"] = postgres_connection_string(self.object)
+        context["ssh_keys"] = self.object.ssh_keys.select_related("server")
         return context
 
 
@@ -129,6 +134,46 @@ class ServerStopView(ServerActionView):
 class ServerRestartView(ServerActionView):
     service_method = staticmethod(restart_server)
     success_message = "Server '{name}' restarted."
+
+
+class ServerSSHKeyCreateView(OwnedServerQuerysetMixin, View):
+    """A generated private key exists only in this one page, so it is rendered instead of redirected away."""
+
+    def post(self, request, pk):
+        server = get_object_or_404(self.get_queryset(), pk=pk)
+        form = ServerSSHKeyForm(request.POST)
+        if not form.is_valid():
+            messages.error(request, " ".join(str(error) for errors in form.errors.values() for error in errors))
+            return redirect("servers:detail", pk=server.pk)
+        try:
+            key, private_key = create_server_ssh_key(server, **form.cleaned_data)
+        except ValidationError as error:
+            messages.error(request, " ".join(error.messages))
+            return redirect("servers:detail", pk=server.pk)
+        except (DockerServiceError, ServerServiceError) as error:
+            messages.error(request, str(error))
+            return redirect("servers:detail", pk=server.pk)
+        if not private_key:
+            messages.success(request, f"Key '{key.label}' added.")
+            return redirect("servers:detail", pk=server.pk)
+        return render(
+            request,
+            "servers/server_ssh_key_created.html",
+            {"server": server, "key": key, "private_key": private_key},
+        )
+
+
+class ServerSSHKeyDeleteView(OwnedServerQuerysetMixin, View):
+    def post(self, request, pk, key_pk):
+        server = get_object_or_404(self.get_queryset(), pk=pk)
+        key = get_object_or_404(server.ssh_keys, pk=key_pk)
+        try:
+            delete_server_ssh_key(server, key)
+        except DockerServiceError as error:
+            messages.error(request, str(error))
+        else:
+            messages.success(request, f"Key '{key.label}' removed.")
+        return redirect("servers:detail", pk=server.pk)
 
 
 class ServerDeleteView(OwnedServerQuerysetMixin, DeleteView):

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}{{ key.label }} key · MiniCloud{% endblock %}
+
+{% block content %}
+  <div class="dashboard-card bg-white p-4" style="max-width: 780px;">
+    <div class="text-uppercase small text-muted font-mono mb-2">Server / {{ server.name }}</div>
+    <h1 class="h4 mb-2">Private key for {{ key.label }}</h1>
+    <p class="small text-danger">This page is the only copy. MiniCloud stores the public half only, so closing it means generating a new pair.</p>
+    <textarea id="private-key" class="form-control font-mono mb-3" rows="12" readonly spellcheck="false">{{ private_key }}</textarea>
+    <div class="d-flex flex-wrap gap-2 mb-3">
+      <button class="btn btn-success" type="button" id="download-private-key">Download id_ed25519_{{ key.id }}</button>
+      <button class="btn btn-outline-secondary" type="button" id="copy-private-key">Copy</button>
+      <a class="btn btn-outline-dark ms-auto" href="{% url 'servers:detail' pk=server.pk %}">Done</a>
+    </div>
+    <p class="small text-muted mb-0">Save the file, then connect with <code>ssh -i &lt;path&gt; -p {{ server.ssh_port }} root@{{ server.ssh_host }}</code>. Keep it inside your own profile: OpenSSH refuses a key other users can read. This key can connect as <code>root</code> from <code>{{ key.sources|default:"any source" }}</code>.</p>
+  </div>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script>
+    (() => {
+      const field = document.getElementById("private-key");
+      document.getElementById("copy-private-key").addEventListener("click", async () => {
+        await navigator.clipboard.writeText(field.value);
+      });
+      document.getElementById("download-private-key").addEventListener("click", () => {
+        const url = URL.createObjectURL(new Blob([field.value], { type: "application/octet-stream" }));
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "id_ed25519_{{ key.id }}";
+        link.click();
+        URL.revokeObjectURL(url);
+      });
+    })();
+  </script>
+{% endblock %}

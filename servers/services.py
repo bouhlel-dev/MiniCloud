@@ -9,7 +9,8 @@ from django.db import close_old_connections, transaction
 from accounts.models import User
 
 from .docker_service import DockerService, DockerServiceError
-from .models import Server, ServerTemplate
+from .models import Server, ServerSSHKey, ServerTemplate
+from .ssh_keys import generate_key_pair
 
 
 class ServerServiceError(Exception):
@@ -90,8 +91,10 @@ def provision_server(owner, *, name, image, template, custom_image="", env_vars=
         ssh_public_key = ""
         ssh_allowed_from = ""
     else:
+        # A key typed in at provisioning becomes the first of possibly many; leaving the
+        # field blank is valid too, and the server page can generate a pair afterwards.
         try:
-            ssh_public_key = Server.parse_ssh_public_key(ssh_public_key)
+            ssh_public_key = Server.parse_ssh_public_key(ssh_public_key) if ssh_public_key.strip() else ""
             ssh_allowed_from = Server.parse_ssh_allowed_from(ssh_allowed_from)
         except ValidationError as error:
             raise ProvisioningError("; ".join(error.messages)) from error
@@ -119,7 +122,6 @@ def provision_server(owner, *, name, image, template, custom_image="", env_vars=
             host_port=host_port,
             ssh_enabled=ssh_enabled,
             ssh_port=ssh_port,
-            ssh_public_key=ssh_public_key,
             ssh_allowed_from=ssh_allowed_from,
             env_vars=env_vars,
             provisioning_step=Server.ProvisioningStep.ALLOCATING_PORT,
@@ -129,6 +131,8 @@ def provision_server(owner, *, name, image, template, custom_image="", env_vars=
         except ValidationError as error:
             raise ProvisioningError("; ".join(error.messages)) from error
         server.save()
+        if ssh_public_key:
+            server.ssh_keys.create(label="default", public_key=ssh_public_key)
 
     _spawn_provisioning(server.pk, docker_service)
     return server
@@ -265,6 +269,39 @@ def delete_server(server, docker_service=None):
         if released:
             server.save(update_fields=released)
     return server
+
+
+def create_server_ssh_key(server, *, label, public_key="", allowed_from="", docker_service=None):
+    """Add one key to a server and return the private half when MiniCloud generated the pair.
+
+    The private key exists only in this return value: nothing on disk or in the
+    database keeps a copy, so it has to be handed to the user immediately.
+    """
+    generated = generate_key_pair(label) if not (public_key or "").strip() else None
+    key = ServerSSHKey(
+        server=server,
+        label=" ".join((label or "").split()),
+        public_key=generated["public_key"] if generated else Server.parse_ssh_public_key(public_key),
+        allowed_from=Server.parse_ssh_allowed_from(allowed_from),
+    )
+    key.full_clean()
+    with transaction.atomic():
+        key.save()
+        _apply_ssh_keys(server, docker_service)
+    return key, (generated["private_key"] if generated else "")
+
+
+def delete_server_ssh_key(server, key, docker_service=None):
+    with transaction.atomic():
+        key.delete()
+        _apply_ssh_keys(server, docker_service)
+
+
+def _apply_ssh_keys(server, docker_service):
+    """Rewrite authorized_keys in place; sshd reads it per connection, so no restart is needed."""
+    if not server.ssh_enabled or server.status != Server.Status.RUNNING:
+        return
+    (docker_service or DockerService()).configure_ssh(server)
 
 
 def check_ssh_reachability(server, timeout=5.0):

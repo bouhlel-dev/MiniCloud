@@ -41,11 +41,42 @@
       <h2 class="h5 mb-2">SSH access</h2>
       <p class="small text-muted">Key-only sign-in as <code>root</code> on port {{ server.ssh_port }}; password authentication stays disabled. The host is <code>{{ server.ssh_host }}</code>, so set <code>MINICLOUD_SSH_HOST</code> to an address your client can reach.</p>
       {% if server.ssh_allowed_from %}
-        <p class="small text-muted mb-0">Accepted sources: <code>{{ server.ssh_allowed_from }}</code>. sshd refuses every other address before the key is even offered.</p>
+        <p class="small text-muted">Accepted sources: <code>{{ server.ssh_allowed_from }}</code>. sshd refuses every other address before the key is even offered.</p>
       {% elif server.ssh_exposed %}
-        <p class="small text-danger mb-0">{{ server.ssh_host }} is reachable from the internet and every source is accepted. Restrict <code>ssh_allowed_from</code> to the addresses you connect from.</p>
+        <p class="small text-danger">{{ server.ssh_host }} is reachable from the internet and every source is accepted. Give each key its own <em>Allowed from</em> list, or set <code>ssh_allowed_from</code> through the API.</p>
       {% endif %}
-      <div class="input-group"><input id="ssh-command" class="form-control font-mono" value="{{ server.ssh_command }}" readonly><button class="btn btn-outline-secondary" id="copy-ssh-command" type="button">Copy</button></div>
+      <div class="input-group mb-3"><input id="ssh-command" class="form-control font-mono" value="{{ server.ssh_command }}" readonly><button class="btn btn-outline-secondary" id="copy-ssh-command" type="button">Copy</button></div>
+      {% if ssh_keys %}
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-3">
+            <thead><tr><th>Device</th><th>Algorithm</th><th>Fingerprint</th><th>Accepted sources</th><th>Added</th><th></th></tr></thead>
+            <tbody>
+              {% for key in ssh_keys %}
+                <tr>
+                  <td>{{ key.label }}</td>
+                  <td><code class="small">{{ key.key_type }}</code></td>
+                  <td><code class="small">{{ key.fingerprint }}</code></td>
+                  <td><code class="small">{{ key.sources|default:"any source" }}</code></td>
+                  <td class="small text-muted">{{ key.created_at|date:"M j, Y H:i" }}</td>
+                  <td class="text-end"><form method="post" action="{% url 'servers:ssh-key-delete' pk=server.pk key_pk=key.pk %}">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit">Remove</button></form></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="small text-muted">No keys are published, so sshd currently accepts nobody.</p>
+      {% endif %}
+      <form method="post" action="{% url 'servers:ssh-key-create' pk=server.pk %}">
+        {% csrf_token %}
+        <div class="row g-2 mb-2">
+          <div class="col-md-4"><label class="form-label small mb-1">Device name</label><input class="form-control form-control-sm" name="label" maxlength="60" required placeholder="work laptop"></div>
+          <div class="col-md-4"><label class="form-label small mb-1">Allowed from</label><input class="form-control form-control-sm font-mono" name="allowed_from" placeholder="203.0.113.7, 198.51.100.0/24"></div>
+          <div class="col-md-4 d-flex align-items-end"><button class="btn btn-sm btn-primary w-100" type="submit">Add key</button></div>
+        </div>
+        <label class="form-label small mb-1">Public key — leave blank and MiniCloud generates the pair and shows you the private key once</label>
+        <textarea class="form-control form-control-sm font-mono" name="public_key" rows="2" placeholder="ssh-ed25519 AAAA… user@laptop"></textarea>
+      </form>
     </div>
   {% endif %}
   <div class="dashboard-card bg-dark text-light p-4 mb-3">

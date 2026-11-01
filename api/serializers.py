@@ -2,7 +2,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
 from monitoring.models import Incident, MetricSnapshot, Notification
-from servers.models import Server, ServerTemplate
+from servers.models import Server, ServerSSHKey, ServerTemplate
 from servers.services import postgres_connection_string
 
 
@@ -24,6 +24,9 @@ class ServerSerializer(serializers.ModelSerializer):
     ssh_command = serializers.CharField(read_only=True)
     ssh_host = serializers.CharField(read_only=True)
     ssh_exposed = serializers.BooleanField(read_only=True)
+    # Not a model field any more: a key pasted here becomes the server's first
+    # ServerSSHKey row, and every later key is added through the keys endpoint.
+    ssh_public_key = serializers.CharField(write_only=True, required=False, allow_blank=True)
 
     class Meta:
         model = Server
@@ -46,8 +49,8 @@ class ServerSerializer(serializers.ModelSerializer):
             "host_port",
             "ssh_enabled",
             "ssh_port",
-            "ssh_public_key",
             "ssh_allowed_from",
+            "ssh_public_key",
             "ssh_command",
             "ssh_host",
             "ssh_exposed",
@@ -124,11 +127,37 @@ class ServerSerializer(serializers.ModelSerializer):
         framework = attrs.get("framework", getattr(self.instance, "framework", ""))
         if not Server.supports_framework(image, framework):
             raise serializers.ValidationError({"framework": "Choose a framework that matches the selected image."})
-        ssh_enabled = attrs.get("ssh_enabled", getattr(self.instance, "ssh_enabled", False))
-        ssh_public_key = attrs.get("ssh_public_key", getattr(self.instance, "ssh_public_key", "")) or ""
-        if ssh_enabled and not ssh_public_key.strip():
-            raise serializers.ValidationError({"ssh_public_key": "An OpenSSH public key is required to enable SSH access."})
         return attrs
+
+
+class ServerSSHKeySerializer(serializers.ModelSerializer):
+    key_type = serializers.CharField(read_only=True)
+    fingerprint = serializers.CharField(read_only=True)
+    sources = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = ServerSSHKey
+        fields = ("id", "label", "key_type", "public_key", "fingerprint", "allowed_from", "sources", "created_at")
+        read_only_fields = ("id", "key_type", "fingerprint", "sources", "created_at")
+        extra_kwargs = {
+            # A blank public key asks MiniCloud to generate the pair and hand back the private half.
+            "public_key": {"required": False, "allow_blank": True},
+            "allowed_from": {"required": False, "allow_blank": True},
+        }
+
+    def validate_public_key(self, value):
+        if not (value or "").strip():
+            return value
+        try:
+            return Server.parse_ssh_public_key(value)
+        except DjangoValidationError as error:
+            raise serializers.ValidationError(error.messages) from error
+
+    def validate_allowed_from(self, value):
+        try:
+            return Server.parse_ssh_allowed_from(value or "")
+        except DjangoValidationError as error:
+            raise serializers.ValidationError(error.messages) from error
 
 
 class MetricSnapshotSerializer(serializers.ModelSerializer):
